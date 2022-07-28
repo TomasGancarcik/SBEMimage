@@ -19,6 +19,7 @@ import os
 import shutil
 import datetime
 import json
+import math
 
 from time import sleep, time
 from statistics import mean
@@ -57,7 +58,9 @@ class Acquisition:
         # Log file handles
         self.main_log_file = None
         self.imagelist_file = None
+        self.imagelist_ov_file = None
         self.mirror_imagelist_file = None
+        self.mirror_imagelist_ov_file = None
         self.incident_log_file = None
         self.metadata_file = None
         # Filename of current Viewport screenshot
@@ -75,6 +78,10 @@ class Acquisition:
         self.slice_counter = int(self.cfg['acq']['slice_counter'])
         self.number_slices = int(self.cfg['acq']['number_slices'])
         self.slice_thickness = int(self.cfg['acq']['slice_thickness'])
+        # use_target_z_diff: Whether to use a target depth (true), or a target number of slices (false)
+        self.use_target_z_diff = (
+                self.cfg['acq']['use_target_z_diff'].lower() == 'true')
+        self.target_z_diff = float(self.cfg['acq']['target_z_diff'])
         # total_z_diff: The total Z of sample removed in microns (only cuts
         # during acquisitions are taken into account)
         self.total_z_diff = float(self.cfg['acq']['total_z_diff'])
@@ -158,6 +165,8 @@ class Acquisition:
         self.cfg['acq']['number_slices'] = str(self.number_slices)
         self.cfg['acq']['slice_thickness'] = str(self.slice_thickness)
         self.cfg['acq']['total_z_diff'] = str(self.total_z_diff)
+        self.cfg['acq']['use_target_z_diff'] = str(self.use_target_z_diff)
+        self.cfg['acq']['target_z_diff'] = str(self.target_z_diff)
 
         self.cfg['acq']['interrupted'] = str(self.acq_interrupted)
         self.cfg['acq']['interrupted_at'] = str(self.acq_interrupted_at)
@@ -203,14 +212,19 @@ class Acquisition:
             total_cut_time (float): Total time for cuts with the knife
             date_estimate (str): Date and time of expected completion
         """
-        N = self.number_slices
-        if N == 0:    # 0 slices is a valid setting. It means: image the current
-            N = 1     # surface, but do not cut afterwards.
+        if self.use_target_z_diff:
+            # calculate number of slices based on total Z difference, rounding down to nearest whole slice
+            number_slices = math.floor((self.target_z_diff*1000)/self.slice_thickness)
+        else:
+            number_slices = self.number_slices
+        N = number_slices
+        if N == 0:  # 0 slices is a valid setting. It means: image the current
+            N = 1  # surface, but do not cut afterwards.
         current = self.sem.target_beam_current
         min_dose = max_dose = None
         if self.microtome is not None:
             total_cut_time = (
-                self.number_slices * self.microtome.full_cut_duration)
+                number_slices * self.microtome.full_cut_duration)
         else:
             total_cut_time = 0
         total_grid_area = 0
@@ -341,14 +355,17 @@ class Acquisition:
                 if (max_dose is None) or (dose > max_dose):
                     max_dose = dose
 
-        total_z = (self.number_slices * self.slice_thickness) / 1000
+        total_z = (number_slices * self.slice_thickness) / 1000
         total_data_in_GB = total_data / (10**9)
         total_duration = (
             total_imaging_time + total_stage_move_time + total_cut_time)
 
         # Calculate date and time of completion
         now = datetime.datetime.now()
-        fraction_completed = self.slice_counter / N
+        if self.use_target_z_diff:
+            fraction_completed = self.total_z_diff / total_z
+        else:
+            fraction_completed = self.slice_counter / N
         remaining_time = int(total_duration * (1 - fraction_completed))
         completion_date = now + relativedelta(seconds=remaining_time)
         date_estimate = str(completion_date)[:19].replace(' ', ' at ')
@@ -451,6 +468,13 @@ class Acquisition:
                 'imagelist_' + timestamp + '.txt')
             self.imagelist_file = open(self.imagelist_filename,
                                        'w', buffer_size)
+            # Set up overview imagelist file, which contains the paths, file names and
+            # positions of all acquired overviews
+            self.imagelist_ov_filename = os.path.join(
+                self.base_dir, 'meta', 'logs',
+                'imagelist_ov_' + timestamp + '.txt')
+            self.imagelist_ov_file = open(self.imagelist_ov_filename,
+                                          'w', buffer_size)
             # Incident log for warnings, errors and debris detection events
             # (All incidents are also logged in the main log file.)
             self.incident_log_filename = os.path.join(
@@ -475,22 +499,26 @@ class Acquisition:
                     gridmap_filename,
                     self.main_log_filename,
                     self.imagelist_filename,
+                    self.imagelist_ov_filename,
                     self.incident_log_filename,
                     self.metadata_filename])
-                # Create file handle for imagelist file on mirror drive.
-                # The imagelist file on the mirror drive is updated continously.
+                # Create file handle for imagelist files on mirror drive.
+                # The imagelist files on the mirror drive are updated continously.
                 # The other logfiles are copied at the end of each run.
                 try:
                     self.mirror_imagelist_file = open(os.path.join(
                         self.mirror_drive, self.imagelist_filename[2:]),
                         'w', buffer_size)
+                    self.mirror_imagelist_ov_file = open(os.path.join(
+                        self.mirror_drive, self.imagelist_ov_filename[2:]),
+                        'w', buffer_size)
                 except Exception as e:
                     utils.log_error(
                         'CTRL',
-                        'Error while creating imagelist file on mirror '
+                        'Error while creating imagelist files on mirror '
                         'drive: ' + str(e))
                     self.add_to_main_log(
-                        'CTRL: Error while creating imagelist file on mirror '
+                        'CTRL: Error while creating imagelist files on mirror '
                         'drive: ' + str(e))
                     self.pause_acquisition(1)
                     self.error_state = Error.mirror_drive
@@ -659,7 +687,7 @@ class Acquisition:
             dwell_time_list = []
             for grid_index in range(self.gm.number_grids):
                 grid_list.append(str(grid_index).zfill(utils.GRID_DIGITS))
-                grid_origin_list.append(self.gm[grid_index].origin_sx_sy)
+                grid_origin_list.append(self.gm[grid_index].origin_sx_sy.tolist())
                 rotation_angle_list.append(self.gm[grid_index].rotation)
                 pixel_size_list.append(self.gm[grid_index].pixel_size)
                 dwell_time_list.append(self.gm[grid_index].dwell_time)
@@ -902,8 +930,14 @@ class Acquisition:
             # and check if stack has been completed.
             self.main_controls_trigger.transmit('SAVE CFG')
             self.main_controls_trigger.transmit('UPDATE PROGRESS')
-            if self.slice_counter == self.number_slices:
-                self.stack_completed = True
+
+            if self.use_target_z_diff:
+                # stop when cutting another slice at the current thickness would exceed the target z depth
+                if (self.total_z_diff + (self.slice_thickness/1000)) > self.target_z_diff:
+                    self.stack_completed = True
+            else:
+                if self.slice_counter == self.number_slices:
+                    self.stack_completed = True
 
             # Copy log file to mirror disk
             # (Error handling in self.mirror_files())
@@ -973,7 +1007,7 @@ class Acquisition:
         if self.send_metadata:
             session_stopped_status = {
                 'timestamp': int(time()),
-                'error_state': self.error_state
+                'error_state': str(self.error_state)
             }
             status, exc_str = self.notifications.send_session_stopped(
                 self.metadata_project_name, self.stack_name,
@@ -1001,8 +1035,11 @@ class Acquisition:
             self.main_log_file.close()
         if self.imagelist_file is not None:
             self.imagelist_file.close()
+        if self.imagelist_ov_file is not None:
+            self.imagelist_ov_file.close()
         if self.use_mirror_drive and self.mirror_imagelist_file is not None:
             self.mirror_imagelist_file.close()
+            self.mirror_imagelist_ov_file.close()
         if self.incident_log_file is not None:
             self.incident_log_file.close()
         if self.metadata_file is not None:
@@ -1374,7 +1411,7 @@ class Acquisition:
                        and not self.pause_state == 1
                        and fail_counter < 3):
 
-                    ov_filename, ov_accepted, rejected_by_user = (
+                    relative_ov_save_path, ov_save_path, ov_accepted, rejected_by_user = (
                         self.acquire_overview(ov_index))
 
                     if (self.error_state in [Error.grab_incomplete, Error.image_load]
@@ -1403,7 +1440,7 @@ class Acquisition:
                           and (self.use_debris_detection
                           or self.first_ov[ov_index])):
                         # Save image with debris
-                        self.save_debris_image(ov_filename, ov_index,
+                        self.save_debris_image(ov_save_path, ov_index,
                                                sweep_counter)
                         self.img_inspector.discard_last_ov(ov_index)
                         # Try to remove debris
@@ -1454,6 +1491,8 @@ class Acquisition:
                 self.first_ov[ov_index] = False
 
                 if ov_accepted:
+                    # Write overview's name and position into imagelist_ov
+                    self.register_accepted_ov(relative_ov_save_path, ov_index)
                     # Write stats and reslice to disk. If this does not work,
                     # show a warning in the log, but don't pause the acquisition
                     success, error_msg = (
@@ -1481,7 +1520,7 @@ class Acquisition:
                         self.add_to_main_log('CTRL: ' + error_msg)
                     # Mirror the acquired overview
                     if self.use_mirror_drive:
-                        self.mirror_files([ov_filename])
+                        self.mirror_files([ov_save_path])
                 if sweep_counter > 0:
                     self.add_to_incident_log(
                         'Debris, ' + str(sweep_counter) + ' sweep(s)')
@@ -1498,6 +1537,7 @@ class Acquisition:
         ov_save_path = None
         ov_accepted = False
         rejected_by_user = False
+        check_ov_acceptance = bool(self.cfg['overviews']['check_acceptance'].lower() == 'true')
 
         ov_stage_position = self.ovm[ov_index].centre_sx_sy
         # Move to OV stage coordinates if required (this method can be called
@@ -1560,8 +1600,8 @@ class Acquisition:
                     + utils.format_wd_stig(ov_wd, stig_x, stig_y))
 
             # Path and filename of overview image to be acquired
-            ov_save_path = utils.ov_save_path(
-                self.base_dir, self.stack_name, ov_index, self.slice_counter)
+            relative_ov_save_path = utils.ov_relative_save_path(self.stack_name, ov_index, self.slice_counter)
+            ov_save_path = os.path.join(self.base_dir, relative_ov_save_path)
 
             utils.log_info(
                 'SEM',
@@ -1584,7 +1624,7 @@ class Acquisition:
             if os.path.isfile(ov_save_path):
 
                 # Inspect the acquired image
-                (ov_img, mean, stddev,
+                (ov_img, mean, stddev, sharpness,
                  range_test_passed,
                  load_error, load_exception, grab_incomplete) = (
                     self.img_inspector.process_ov(ov_save_path,
@@ -1616,11 +1656,11 @@ class Acquisition:
                     self.error_state = Error.image_load
                     ov_accepted = False
                     # Don't pause yet, try again in OV acquisition loop.
-                elif grab_incomplete:
+                elif grab_incomplete and check_ov_acceptance:
                     self.error_state = Error.grab_incomplete
                     ov_accepted = False
                     # Don't pause yet, try again in OV acquisition loop.
-                elif (self.monitor_images and not range_test_passed):
+                elif self.monitor_images and not range_test_passed and check_ov_acceptance:
                     ov_accepted = False
                     self.error_state = Error.overview_image    # OV image error
                     self.pause_acquisition(1)
@@ -1632,7 +1672,8 @@ class Acquisition:
                 else:
                     # OV has passed all tests, but now check for debris
                     ov_accepted = True
-                    if self.first_ov[ov_index]:
+                    # do not check if using GCIB
+                    if self.first_ov[ov_index] and not self.syscfg['device']['microtome'] == '6':
                         self.main_controls_trigger.transmit(
                             'ASK DEBRIS FIRST OV' + str(ov_index))
                         # The command above causes a message box to be displayed
@@ -1697,7 +1738,7 @@ class Acquisition:
                 rejected_by_user = True
             self.user_reply = None
 
-        return ov_save_path, ov_accepted, rejected_by_user
+        return relative_ov_save_path, ov_save_path, ov_accepted, rejected_by_user
 
     def remove_debris(self):
         """Try to remove detected debris by sweeping the surface. Microtome must
@@ -1753,6 +1794,7 @@ class Acquisition:
         # Use (SmartSEM) autofocus/autostig (method 0) on this slice for the
         # grid acquisition depending on whether MagC mode is active, and
         # on the slice number and current autofocus settings.
+        # Perform mapfost also prior to first removal.
         if self.magc_mode:
             self.autofocus_stig_current_slice = True, True
         else:
@@ -1778,7 +1820,13 @@ class Acquisition:
                 'CTRL: DELTA_WD: {0:+.4f}'.format(self.wd_delta * 1000)
                 + ', DELTA_STIG_X: {0:+.2f}'.format(self.stig_x_delta)
                 + ', DELTA_STIG_Y: {0:+.2f}'.format(self.stig_x_delta))
-
+        # fit a plane for
+        if self.autofocus.tracking_mode == 3:  # global aberration gradient
+            for grid_index in range(self.gm.number_grids):
+                if self.error_state != Error.none or self.pause_state == 1:
+                    break
+                self.do_autofocus_before_grid_acq(grid_index)
+            self.gm.fit_apply_aberration_gradient()
         for grid_index in range(self.gm.number_grids):
             if self.error_state != Error.none or self.pause_state == 1:
                 break
@@ -1826,9 +1874,11 @@ class Acquisition:
                     else:
                         # Do autofocus on non-active tiles before grid acq
                         if (self.use_autofocus
-                                and self.autofocus.method in [0, 3]  # zeiss or mapfost
-                                and (self.autofocus_stig_current_slice[0]
-                                or self.autofocus_stig_current_slice[1])):
+                            and self.autofocus.method in [0, 3]  # zeiss or mapfost
+                            and (self.autofocus_stig_current_slice[0]
+                            or self.autofocus_stig_current_slice[1])
+                            and not self.autofocus.tracking_mode == 3  # in that case these tiles have been visited already
+                        ):
                             self.do_autofocus_before_grid_acq(grid_index)
                         # Adjust working distances and stigmation parameters
                         # for this grid with autofocus corrections
@@ -1855,7 +1905,6 @@ class Acquisition:
         # If there was no (new) interuption, reset self.grids_acquired
         if not self.acq_interrupted:
             self.grids_acquired = []
-
 
     def acquire_grid(self, grid_index):
         """Acquire all active tiles of grid specified by grid_index"""
@@ -1893,7 +1942,8 @@ class Acquisition:
                 grid_centre_d = self.gm[grid_index].centre_dx_dy
                 self.cs.set_vp_centre_d(grid_centre_d)
                 self.main_controls_trigger.transmit('DRAW VP')
-                self.main_controls_trigger.transmit('SET SECTION STATE GUI-'
+                self.main_controls_trigger.transmit(
+                    'MAGC SET SECTION STATE GUI-'
                     + str(grid_index)
                     + '-acquiring')
 
@@ -2103,7 +2153,7 @@ class Acquisition:
                     self.cs.set_vp_centre_d(grid_centre_d)
                     self.main_controls_trigger.transmit('DRAW VP')
                     self.main_controls_trigger.transmit(
-                        'SET SECTION STATE GUI-'
+                        'MAGC SET SECTION STATE GUI-'
                         + str(grid_index)
                         + '-acquired')
 
@@ -2329,7 +2379,7 @@ class Acquisition:
             # Check if image was saved and process it
             if os.path.isfile(save_path):
                 start_time = time()
-                (tile_img, mean, stddev,
+                (tile_img, mean, stddev, sharpness, 
                  range_test_passed, slice_by_slice_test_passed, tile_selected,
                  load_error, load_exception,
                  grab_incomplete, frozen_frame_error) = (
@@ -2493,6 +2543,49 @@ class Acquisition:
                 self.add_to_main_log('CTRL: Error sending tile metadata '
                                      'to server. ' + exc_str)
 
+    def register_accepted_ov(self, relative_save_path, ov_index):
+        """Register the overview image in the overview image list file and the metadata
+        file. Send metadata to remote server.
+        """
+        timestamp = int(time())
+        ov_id = utils.overview_id(ov_index, self.slice_counter)
+        global_x, global_y = (self.ovm.overview_position_for_registration(ov_index))
+        global_z = int(self.total_z_diff * 1000)
+        overviewinfo_str = (relative_save_path + ';'
+                        + str(global_x) + ';'
+                        + str(global_y) + ';'
+                        + str(global_z) + ';'
+                        + str(self.slice_counter) + '\n')
+        self.imagelist_ov_file.write(overviewinfo_str)
+        # Write the same information to the ov_imagelist on the mirror drive
+        if self.use_mirror_drive:
+            self.mirror_imagelist_ov_file.write(overviewinfo_str)
+        ov_width, ov_height = self.ovm[ov_index].frame_size
+        ov_metadata = {
+            'ov_id': ov_id,
+            'timestamp': timestamp,
+            'filename': relative_save_path.replace('\\', '/'),
+            'ov_width': ov_width,
+            'ov_height': ov_height,
+            'wd_stig_xy': self.ovm[ov_index].wd_stig_xy,
+            'glob_x': global_x,
+            'glob_y': global_y,
+            'glob_z': global_z,
+            'slice_counter': self.slice_counter}
+        self.metadata_file.write('OVERVIEW: ' + str(ov_metadata) + '\n')
+        # Server notification
+        if self.send_metadata:
+            status, exc_str = self.notifications.send_ov_metadata(
+                self.metadata_project_name, self.stack_name, ov_metadata)
+            if status == 100:
+                self.error_state = Error.metadata_server
+                self.pause_acquisition(1)
+                utils.log_error('CTRL',
+                                'Error sending overview metadata '
+                                'to server. ' + exc_str)
+                self.add_to_main_log('CTRL: Error sending overview metadata '
+                                     'to server. ' + exc_str)
+
     def save_rejected_tile(self, tile_save_path, grid_index, tile_index,
                            fail_counter):
         """Save rejected tile image in the 'rejected' subfolder."""
@@ -2584,6 +2677,13 @@ class Acquisition:
             af_type = '(stig only)'
         wd = self.sem.get_wd()
         sx, sy = self.sem.get_stig_xy()
+        # added to adjust WD and stig values to tiles which are just used for autofocus!
+        tile_wd = self.gm[grid_index][tile_index].wd
+        tile_stig_x = self.gm[grid_index][tile_index].stig_xy[0]
+        tile_stig_y = self.gm[grid_index][tile_index].stig_xy[1]
+        if (tile_wd != wd) or (tile_stig_x != sx) or (tile_stig_y != sy):
+            self.sem.set_wd(tile_wd)
+            self.sem.set_stig_xy(tile_stig_x, tile_stig_y)
         # TODO: Use enum for method:
         if self.autofocus.method == 0:
             utils.log_info('SEM',
@@ -2595,35 +2695,43 @@ class Acquisition:
                                  + str(grid_index) + '.' + str(tile_index))
             autofocus_msg = 'SEM', self.autofocus.run_zeiss_af(do_focus, do_stig)
         elif self.autofocus.method == 3:
-            utils.log_info('SEM',
-                           'Running MAPFoSt AF procedure for tile '
-                           + str(grid_index) + '.' + str(tile_index))
-            self.add_to_main_log('SEM: Running MAPFoSt AF procedure for tile '
-                                 + str(grid_index) + '.' + str(tile_index))
-            autofocus_msg = 'CTRL', self.autofocus.run_mapfost_af()
-            if not self.autofocus.wd_stig_diff_below_max(wd, sx, sy):
-                utils.log_info('SEM',
-                               'Re-running MAPFoSt AF procedure for tile '
-                               + str(grid_index) + '.' + str(tile_index))
-                self.add_to_main_log('SEM: Re-running MAPFoSt AF procedure for tile '
-                                     + str(grid_index) + '.' + str(tile_index))
-                autofocus_msg = 'CTRL', self.autofocus.run_mapfost_af(defocus_arr=[10, 8, 8, 6, 4, 2])
+            msg = f'Running MAPFoSt AF procedure for tile {grid_index}.{tile_index} with initial WD/STIG_X/Y: ' \
+                  f'{tile_wd*1000:.4f}, {tile_stig_x:.4f}, {tile_stig_y:.4f}'
+            utils.log_info('SEM', msg)
+            self.add_to_main_log(f'SEM: {msg}')
+            autofocus_msg = self.autofocus.run_mapfost_af(aberr_mode_bools=[1, do_stig, do_stig],
+                                                          pixel_size=self.autofocus.pixel_size,
+                                                          large_aberrations=self.autofocus.mapfost_large_aberrations,
+                                                          max_wd_stigx_stigy = [self.autofocus.max_wd_diff*10**6,
+                                                                                self.autofocus.max_stig_x_diff,
+                                                                                self.autofocus.max_stig_y_diff])
         else:
             self.error_state = Error.autofocus_smartsem  # TODO: check if that code makes sense here
             return
-        utils.log_info(*autofocus_msg)
+        if self.autofocus.method != 3:
+            utils.log_info(*autofocus_msg)
+        else:
+            utils.log_info(autofocus_msg)
         self.add_to_main_log(autofocus_msg[0] + ': ' + autofocus_msg[1])
         if 'ERROR' in autofocus_msg[1]:
             self.error_state = Error.autofocus_smartsem
-        elif not self.autofocus.wd_stig_diff_below_max(wd, sx, sy):
-            self.add_to_incident_log(f'Autofocus out of range with new values: {self.sem.get_wd()} (WD), '
-                                     f'{self.sem.get_stig_xy()} (stig_xy).')
+        elif not self.autofocus.wd_stig_diff_below_max(tile_wd, tile_stig_x, tile_stig_y):
+            msg = (f'Autofocus for tile {grid_index}.{tile_index} out of range with new values: {self.sem.get_wd()*1000} (WD), '
+                   f'{self.sem.get_stig_xy()} (stig_xy).')
+            utils.log_error('STAGE', msg)
+            self.add_to_main_log(msg)
+            self.add_to_incident_log(msg)
             self.error_state = Error.wd_stig_difference
         else:
             # Save settings for specified tile
             self.gm[grid_index][tile_index].wd = self.sem.get_wd()
             self.gm[grid_index][tile_index].stig_xy = list(
                 self.sem.get_stig_xy())
+            msg = f'Finished MAPFoSt AF procedure for tile {grid_index}.{tile_index} with final WD/STIG_X/Y: ' \
+                  f'{self.gm[grid_index][tile_index].wd*1000:.4f}, {self.gm[grid_index][tile_index].stig_xy[0]:.4f},' \
+                  f' {self.gm[grid_index][tile_index].stig_xy[1]:.4f}'
+            utils.log_info('SEM', msg)
+            self.add_to_main_log(f'SEM: {msg}')
             # Show updated WD label(s) in Viewport
             self.main_controls_trigger.transmit('DRAW VP')
 
@@ -2839,7 +2947,7 @@ class Acquisition:
         if self.main_log_file is not None:
             self.main_log_file.write(msg + '\n')
         # Send entry to Main Controls via queue and trigger
-        #self.main_controls_trigger.transmit(msg)
+        # self.main_controls_trigger.transmit(msg)
 
     def add_to_incident_log(self, msg):
         """Add msg to the incident log file (after formatting it) and show it

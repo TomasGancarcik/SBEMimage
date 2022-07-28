@@ -10,7 +10,7 @@
     <x>0</x>
     <y>0</y>
     <width>221</width>
-    <height>288</height>
+    <height>368</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -20,7 +20,7 @@
    <property name="geometry">
     <rect>
      <x>20</x>
-     <y>250</y>
+     <y>330</y>
      <width>191</width>
      <height>32</height>
     </rect>
@@ -131,6 +131,63 @@
     <double>0.010000000000000</double>
    </property>
   </widget>
+  <widget class="QLabel" name="label_2">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>110</y>
+     <width>211</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <weight>50</weight>
+     <bold>false</bold>
+    </font>
+   </property>
+   <property name="text">
+    <string>If the working distance is set to 0.000000,</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_3">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>130</y>
+     <width>211</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <weight>50</weight>
+     <bold>false</bold>
+    </font>
+   </property>
+   <property name="text">
+    <string>individual focus parameters will *not* be</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_4">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>150</y>
+     <width>211</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="font">
+    <font>
+     <weight>50</weight>
+     <bold>false</bold>
+    </font>
+   </property>
+   <property name="text">
+    <string>used for this tile/OV.</string>
+   </property>
+  </widget>
   <widget class="QPushButton" name="pushButton_getFromSmartSEM">
    <property name="geometry">
     <rect>
@@ -215,63 +272,197 @@
     <string>Reset</string>
    </property>
   </widget>
-  <widget class="QLabel" name="label_2">
+
+  <widget class="QPushButton" name="pushButton_set_deltaWD">
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>110</y>
-     <width>211</width>
-     <height>16</height>
+     <y>245</y>
+     <width>100</width>
+     <height>22</height>
     </rect>
    </property>
-   <property name="font">
-    <font>
-     <weight>50</weight>
-     <bold>false</bold>
-    </font>
-   </property>
    <property name="text">
-    <string>If the working distance is set to 0.000000,</string>
+    <string>Shift Working dist.:</string>
    </property>
   </widget>
-  <widget class="QLabel" name="label_3">
+  <widget class="QPushButton" name="pushButton_set_deltaWD_inverted">
+   <property name="geometry">
+    <rect>
+     <x>113</x>
+     <y>245</y>
+     <width>22</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>(-)</string>
+   </property>
+  </widget>
+  <widget class="QDoubleSpinBox" name="doubleSpinBox_deltaWD">
+   <property name="geometry">
+    <rect>
+     <x>140</x>
+     <y>245</y>
+     <width>54</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="decimals">
+    <number>3</number>
+   </property>
+   <property name="minimum">
+    <double>-3.000000000000000</double>
+   </property>
+   <property name="maximum">
+    <double>3.000000000000000</double>
+	</property>
+   <property name="singleStep">
+    <double>0.10000000000</double>
+   </property>
+   </widget>
+  <widget class="QLabel" name="label_shift_wd_unit">
+   <property name="geometry">
+    <rect>
+     <x>198</x>
+     <y>245</y>
+     <width>22</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>um</string>
+   </property>
+  </widget>
+
+
+
+  <widget class="QPushButton" name="pushButton_set_deltaStigX">
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>130</y>
-     <width>211</width>
-     <height>16</height>
+     <y>272</y>
+     <width>100</width>
+     <height>22</height>
     </rect>
    </property>
-   <property name="font">
-    <font>
-     <weight>50</weight>
-     <bold>false</bold>
-    </font>
-   </property>
    <property name="text">
-    <string>individual focus parameters will *not* be</string>
+    <string>Shift Stigmator X:</string>
    </property>
   </widget>
-  <widget class="QLabel" name="label_4">
+  <widget class="QPushButton" name="pushButton_set_deltaStigX_inverted">
+   <property name="geometry">
+    <rect>
+     <x>113</x>
+     <y>272</y>
+     <width>22</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>(-)</string>
+   </property>
+  </widget>
+  <widget class="QDoubleSpinBox" name="doubleSpinBox_deltaStigX">
+   <property name="geometry">
+    <rect>
+     <x>140</x>
+     <y>272</y>
+     <width>54</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="decimals">
+    <number>3</number>
+   </property>
+   <property name="minimum">
+    <double>-99.000000000000000</double>
+   </property>
+   <property name="maximum">
+    <double>99.000000000000000</double>
+   </property>
+   <property name="singleStep">
+    <double>0.050000000000</double>
+   </property>
+   </widget>
+  <widget class="QLabel" name="label_shift_stig_x_unit">
+   <property name="geometry">
+    <rect>
+     <x>198</x>
+     <y>272</y>
+     <width>22</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>%</string>
+   </property>
+  </widget>
+
+  <widget class="QPushButton" name="pushButton_set_deltaStigY">
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>150</y>
-     <width>211</width>
-     <height>16</height>
+     <y>300</y>
+     <width>100</width>
+     <height>22</height>
     </rect>
    </property>
-   <property name="font">
-    <font>
-     <weight>50</weight>
-     <bold>false</bold>
-    </font>
-   </property>
    <property name="text">
-    <string>used for this tile/OV.</string>
+    <string>Shift Stigmator Y:</string>
    </property>
   </widget>
+  <widget class="QPushButton" name="pushButton_set_deltaStigY_inverted">
+   <property name="geometry">
+    <rect>
+     <x>113</x>
+     <y>300</y>
+     <width>22</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>(-)</string>
+   </property>
+  </widget>
+  <widget class="QDoubleSpinBox" name="doubleSpinBox_deltaStigY">
+   <property name="geometry">
+    <rect>
+     <x>140</x>
+     <y>300</y>
+     <width>54</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="decimals">
+    <number>3</number>
+   </property>
+   <property name="minimum">
+    <double>-99.000000000000000</double>
+   </property>
+   <property name="maximum">
+    <double>99.000000000000000</double>
+   </property>
+   <property name="singleStep">
+    <double>0.050000000000</double>
+   </property>
+   </widget>
+  <widget class="QLabel" name="label_shift_stig_y_unit">
+   <property name="geometry">
+    <rect>
+     <x>198</x>
+     <y>300</y>
+     <width>22</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <property name="text">
+    <string>%</string>
+   </property>
+  </widget>
+
+
+
  </widget>
  <resources/>
  <connections>

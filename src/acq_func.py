@@ -19,6 +19,7 @@ and not during acquisitions:
 import os
 import datetime
 import numpy as np
+import scipy.ndimage
 from time import sleep
 from skimage import io
 
@@ -28,6 +29,7 @@ from utils import Error
 
 def acquire_ov(base_dir, selection, sem, stage, ovm, img_inspector,
                main_controls_trigger, viewport_trigger):
+    check_ov_acceptance = bool(sem.cfg['overviews']['check_acceptance'].lower() == 'true')
     # Update current XY stage position
     stage.get_xy()
     success = True
@@ -89,7 +91,7 @@ def acquire_ov(base_dir, selection, sem, stage, ovm, img_inspector,
             viewport_trigger.transmit('ACQ IND OV' + str(ov_index))
             _, _, _, load_error, _, grab_incomplete = (
                 img_inspector.load_and_inspect(save_path))
-            if load_error or grab_incomplete:
+            if load_error or grab_incomplete and check_ov_acceptance:
                 # Try again
                 sleep(0.5)
                 main_controls_trigger.transmit(utils.format_log_entry(
@@ -139,10 +141,9 @@ def acquire_stub_ov(sem, stage, ovm, acq, img_inspector,
     stage.get_xy()
     stub_dlg_trigger.transmit('UPDATE XY')
 
-    if stage.use_microtome:
-        # When using the microtome stage, make sure the DigitalMicrograph script
-        # uses the correct motor speeds (this information is lost when script
-        # crashes.)
+    if stage.use_microtome_xy:
+        # When using the microtome for XY moves, make sure the correct motor 
+        # speeds are being set. This is currently only relevant for Gatan 3View.
         success = stage.update_motor_speed()
 
     if success:
@@ -262,7 +263,7 @@ def acquire_stub_ov(sem, stage, ovm, acq, img_inspector,
             stub_dlg_trigger.transmit(
                 'UPDATE PROGRESS' + str(percentage_done))
 
-        # Write final full stub overview image to disk unless acq aborted
+        # Write final full stub overview image and downsampled copies to disk unless acq aborted
         if not aborted:
             stub_dir = os.path.join(acq.base_dir, 'overviews', 'stub')
             if not os.path.exists(stub_dir):
@@ -275,8 +276,21 @@ def acquire_stub_ov(sem, stage, ovm, acq, img_inspector,
                 acq.stack_name + '_stubOV_s'
                 + str(acq.slice_counter).zfill(5)
                 + '_' + timestamp + '.png')
+            
+            # Full stub OV image
             io.imsave(stub_overview_file_name, full_stub_image,
                       check_contrast=False)
+            try:
+                # Generate downsampled versions of stub OV
+                for mag in [2, 4, 8, 16]:
+                    vp_fname_mag = stub_overview_file_name[:-4] + f'_mag{mag}.png'
+                    img_mag = scipy.ndimage.zoom(full_stub_image, 1 / mag, order=3)
+                    io.imsave(vp_fname_mag, img_mag)
+            except Exception as e:
+                stub_dlg_trigger.transmit(
+                    f'An exception occurred while saving downsampled copies'
+                    f'of the acquired stub overview image: {str(e)}')
+
             ovm['stub'].vp_file_path = stub_overview_file_name
         else:
             # Restore previous stub OV

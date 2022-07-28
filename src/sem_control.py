@@ -13,8 +13,14 @@ that are actually required in SBEMimage have been implemented."""
 
 import json
 from collections import deque
+from typing import List
 
 from utils import Error
+
+import pythoncom
+import win32com.client  # required to use CZEMApi.ocx (Carl Zeiss EM API)
+from win32com.client import VARIANT  # required for API function calls
+import comtypes.client as cc
 
 
 class SEM:
@@ -35,24 +41,33 @@ class SEM:
         # self.error_info: further description / exception error message
         self.error_state = Error.none
         self.error_info = ''
-        # Try to read selected device from recognized devices
-        recognized_devices = json.loads(self.syscfg['device']['recognized'])
-        try:
-            self.cfg['sem']['device'] = (
-                recognized_devices[int(self.syscfg['device']['sem'])])
-        except:
+        # Check if specified device is recognized
+        recognized_devices = json.loads(self.syscfg['device']['sem_recognized'])
+        # Use device selection from system configuration
+        self.cfg['sem']['device'] = self.syscfg['device']['sem']
+        if self.cfg['sem']['device'] not in recognized_devices:
             self.cfg['sem']['device'] = 'NOT RECOGNIZED'
         self.device_name = self.cfg['sem']['device']
+        # IP address and port to communicate with SEM
+        self.ip_address = self.syscfg['device']['sem_ip_address']
+        if not self.ip_address:
+            self.ip_address = None
+        port_str = self.syscfg['device']['sem_port']
+        try:
+            self.port = int(port_str)
+        except ValueError:
+            self.port = None
         # In simulation mode, there is no connection to the SEM hardware
         self.simulation_mode = (
             self.cfg['sys']['simulation_mode'].lower() == 'true')
         self.magc_mode = (self.cfg['sys']['magc_mode'].lower() == 'true')
         # self.use_sem_stage: True if microtome is not used or if katana
-        # microtome is used (but only for XY in that case)
+        # microtome or GCIB are used (but only for XY in that case)
         self.use_sem_stage = (
             self.cfg['sys']['use_microtome'].lower() == 'false'
             or (self.cfg['sys']['use_microtome'].lower() == 'true'
-                and self.syscfg['device']['microtome'] in ['5', '6']))
+                and self.syscfg['device']['microtome'] 
+                in ['ConnectomX katana', 'GCIB']))
         # The target EHT (= high voltage, in kV) and beam current (in pA)
         # are (as implemented at the moment in SBEMimage) global settings for
         # any given acquisition, whereas dwell time, pixel size and frame size
@@ -66,10 +81,21 @@ class SEM:
         # 'Grab frame' settings: these are the settings for acquiring single
         # frames with the SEM using the 'Grab frame' feature in SBEMimage.
         # dwell time provided in microseconds, pixel size in nanometres
-        self.grab_dwell_time = float(self.cfg['sem']['grab_frame_dwell_time'])
-        self.grab_pixel_size = float(self.cfg['sem']['grab_frame_pixel_size'])
-        self.grab_frame_size_selector = int(
-            self.cfg['sem']['grab_frame_size_selector'])
+        if self.cfg['sem']['grab_frame_dwell_time_selector'] == 'None':
+            self.grab_dwell_time_selector = self.DWELL_TIME_DEFAULT_INDEX
+        else:
+            self.grab_dwell_time_selector = int(
+                self.cfg['sem']['grab_frame_dwell_time_selector'])
+        if self.cfg['sem']['grab_frame_dwell_time'] == 'None':
+            self.grab_dwell_time = self.DWELL_TIME[self.grab_dwell_time_selector]
+        else:
+            self.grab_dwell_time = float(self.cfg['sem']['grab_frame_dwell_time'])
+        self.grab_pixel_size = float(self.cfg['sem']['grab_frame_pixel_size'])        
+        if self.cfg['sem']['grab_frame_size_selector'] == 'None':
+            self.grab_frame_size_selector = self.STORE_RES_DEFAULT_INDEX_TILE
+        else:
+            self.grab_frame_size_selector = int(
+                self.cfg['sem']['grab_frame_size_selector'])
         # The cycle time is total duration to acquire a full frame.
         # self.current_cycle_time will be set (in seconds) the first time when
         # self.apply_frame_settings() is called.
@@ -131,8 +157,16 @@ class SEM:
         self.HAS_HIGH_CURRENT = bool(self.syscfg['sem']['has_high_current'])
         # self.STORE_RES: available store resolutions (= frame size in pixels)
         self.STORE_RES = json.loads(self.syscfg['sem']['store_res'])
+        # self.STORE_RES_DEFAULT_INDEX_TILE: default store resolution for new grids and grabbing tiles
+        self.STORE_RES_DEFAULT_INDEX_TILE = int(self.syscfg['sem']['store_res_default_index_tile'])
+        # self.STORE_RES_DEFAULT_INDEX_OV: default store resolution for OVs
+        self.STORE_RES_DEFAULT_INDEX_OV = int(self.syscfg['sem']['store_res_default_index_ov'])
+        # self.STORE_RES_DEFAULT_INDEX_STUB_OV: default store resolution for stub OV tiles
+        self.STORE_RES_DEFAULT_INDEX_STUB_OV = int(self.syscfg['sem']['store_res_default_index_stub_ov'])
         # self.DWELL_TIME: available dwell times in microseconds
         self.DWELL_TIME = json.loads(self.syscfg['sem']['dwell_time'])
+        # self.DWELL_TIME_DEFAULT_INDEX: default dwell time
+        self.DWELL_TIME_DEFAULT_INDEX = int(self.syscfg['sem']['dwell_time_default_index'])
         # self.APERTURE_SIZE: available aperture sizes in microns
         self.APERTURE_SIZE = json.loads(self.syscfg['sem']['aperture_size'])
         # Cycle times: Duration of scanning one full frame, depends on
@@ -253,7 +287,6 @@ class SEM:
         """Set the VP target pressure."""
         raise NotImplementedError
 
-
     def has_fcc(self):
         """Return True if FCC is fitted."""
         raise NotImplementedError
@@ -281,7 +314,6 @@ class SEM:
     def set_fcc_level(self, target_fcc_level):
         """Set the FCC to this target value."""
         raise NotImplementedError
-
 
     def get_beam_current(self):
         """Read beam current (in pA) from SmartSEM."""
@@ -316,6 +348,18 @@ class SEM:
         """Set the SEM to the current target EHT voltage and beam current."""
         raise NotImplementedError
 
+    def get_detector_list(self) -> List[str]:
+        """Return a list of all available detectors."""
+        raise NotImplementedError
+
+    def get_detector(self) -> str:
+        """Return the currently selected detector."""
+        raise NotImplementedError
+
+    def set_detector(self, detector_name: str) -> None:
+        """Select the detector specified by 'detector_name'."""
+        raise NotImplementedError
+ 
     def apply_grab_settings(self):
         """Set the SEM to the current grab settings (stored in
         self.grab_dwell_time, self.grab_pixel_size, and

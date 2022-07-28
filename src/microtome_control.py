@@ -123,11 +123,11 @@ class Microtome(BFRemover):
         self.motor_warning = False  # True when motors slower than expected
         # Load device name and other settings from sysconfig. These
         # settings overwrite the settings in config.
-        recognized_devices = json.loads(self.syscfg['device']['recognized'])
-        try:
-            self.cfg['microtome']['device'] = (
-                recognized_devices[int(self.syscfg['device']['microtome'])])
-        except:
+        recognized_devices = json.loads(
+            self.syscfg['device']['microtome_recognized'])
+        # Use device selection from system configuration
+        self.cfg['microtome']['device'] = self.syscfg['device']['microtome']
+        if self.cfg['microtome']['device'] not in recognized_devices:
             self.cfg['microtome']['device'] = 'NOT RECOGNIZED'
         self.device_name = self.cfg['microtome']['device']
         # Get microtome stage limits from systemcfg
@@ -137,7 +137,7 @@ class Microtome(BFRemover):
         # Get microtome motor speeds from syscfg
         self.motor_speed_x, self.motor_speed_y = (
             json.loads(self.syscfg['stage']['microtome_motor_speed']))
-        # Knife settings in system config override the user config settings.
+        # Knife settings in system config override the session config settings.
         self.cfg['microtome']['full_cut_duration'] = (
             self.syscfg['knife']['full_cut_duration'])
         self.cfg['microtome']['sweep_distance'] = (
@@ -151,7 +151,7 @@ class Microtome(BFRemover):
         # ensure that Z moves cannot be larger than 200 nm in safe mode.
         self.prev_known_z = None
         # self.stage_z_prev_session stores the last known Z coordinate at the end of
-        # the previous session associated with the current user configuration.
+        # the previous session associated with the current session configuration.
         if self.cfg['microtome']['last_known_z'].lower() == 'none':
             self.stage_z_prev_session = None
         else:
@@ -340,7 +340,7 @@ class Microtome(BFRemover):
         """
         duration_x = abs(target_x - self.last_known_x) / self.motor_speed_x
         duration_y = abs(target_y - self.last_known_y) / self.motor_speed_y
-        return duration_x + self.stage_move_wait_interval, duration_y + + self.stage_move_wait_interval
+        return duration_x + self.stage_move_wait_interval, duration_y + self.stage_move_wait_interval
 
     def stage_move_duration(self, from_x, from_y, to_x, to_y):
         """Return the total duration for a move including the

@@ -22,9 +22,11 @@ window (in viewport.py) as a QWidget.
 """
 import os
 import sys
+from typing import Optional
 import threading
 import json
-
+import copy
+import xml.etree.ElementTree as ET
 from time import sleep
 
 from PyQt5.QtWidgets import QApplication, QTableWidgetSelectionRange, \
@@ -40,12 +42,16 @@ from PyQt5.uic import loadUi
 import acq_func
 import utils
 from utils import Error
-from sem_control_zeiss import SEM_SmartSEM
+from sem_control import SEM
+from sem_control_zeiss import SEM_SmartSEM, SEM_MultiSEM
 from sem_control_fei import SEM_Quanta
 from sem_control_tescan import SEM_SharkSEM
+from sem_control_mock import SEM_Mock
+from microtome_control import Microtome
 from microtome_control_gatan import Microtome_3View
 from microtome_control_katana import Microtome_katana
 from microtome_control_gcib import GCIB
+from microtome_control_mock import Microtome_Mock
 from stage import Stage
 from plasma_cleaner import PlasmaCleaner
 from acquisition import Acquisition
@@ -53,6 +59,7 @@ from notifications import Notifications
 from overview_manager import OverviewManager
 from imported_img import ImportedImages
 from grid_manager import GridManager
+from template_manager import TemplateManager
 from coordinate_system import CoordinateSystem
 from viewport import Viewport
 from image_inspector import ImageInspector
@@ -74,7 +81,7 @@ from main_controls_dlg_windows import SEMSettingsDlg, MicrotomeSettingsDlg, \
                                       GCIBSettingsDlg, RunAutofocusDlg
 
 from magc_dlg_windows import ImportMagCDlg, ImportWaferImageDlg, \
-                          WaferCalibrationDlg
+                          WaferCalibrationDlg, ImportZENExperimentDlg
 
 
 class MainControls(QMainWindow):
@@ -97,6 +104,9 @@ class MainControls(QMainWindow):
         self.simulation_mode = (
             self.cfg['sys']['simulation_mode'].lower() == 'true')
         self.magc_mode = (self.cfg['sys']['magc_mode'].lower() == 'true')
+        self.multisem_mode = (
+            self.cfg['sys']['multisem_mode'].lower() == 'true'
+            and self.syscfg['device']['sem'] == 'ZEISS MultiSEM')
         self.use_microtome = (
             self.cfg['sys']['use_microtome'].lower() == 'true')
         self.statusbar_msg = ''
@@ -120,7 +130,17 @@ class MainControls(QMainWindow):
         utils.show_progress_in_console(10)
 
         # Initialize SEM
-        if self.syscfg['device']['sem'] in ['1', '2', '3', '4']:  # ZEISS SEMs
+        if self.syscfg['device']['sem'] == 'ZEISS MultiSEM':
+            QMessageBox.critical(
+                self, 'STAGE COLLISION WARNING - MULTISEM',
+                'THIS MODULE FOR MULTISEM IS STILL IN DEVELOPMENT.\n\n\n\n'
+                'IT CAN PRODUCE UNSAFE STAGE MOVEMENTS LEADING TO '
+                'COLLISIONS WITH THE LENS. \n\n\n\n'
+                '\n ONLY PROCEED IF YOU KNOW WHAT YOU ARE DOING',
+                QMessageBox.Ok)
+            self.sem = SEM_MultiSEM(self.cfg, self.syscfg)
+
+        elif self.syscfg['device']['sem'].startswith('ZEISS'):
             # Create SEM instance to control SEM via SmartSEM API
             self.sem = SEM_SmartSEM(self.cfg, self.syscfg)
             if self.sem.error_state != Error.none:
@@ -132,22 +152,38 @@ class MainControls(QMainWindow):
                     '\nSBEMimage will be run in simulation mode.',
                     QMessageBox.Ok)
                 self.simulation_mode = True
-        elif self.syscfg['device']['sem'] == '7':
+        elif self.syscfg['device']['sem'].startswith('TESCAN'):
             # TESCAN, only for testing at this point
             # Create SEM instance to control SEM via SharkSEM API
             self.sem = SEM_SharkSEM(self.cfg, self.syscfg)
             if self.sem.error_state != Error.none:
-                pass
+                QMessageBox.warning(
+                    self, 'Error initializing TESCAN SharkSEM API',
+                    'TESCAN SharkSEM API could not be initialized / '
+                    'connection to SEM failed.'
+                    '\nSBEMimage will be run in simulation mode.',
+                    QMessageBox.Ok)
+                self.simulation_mode = True
+        elif self.syscfg['device']['sem'] == 'Mock SEM':
+            self.sem = SEM_Mock(self.cfg, self.syscfg)        
+        elif self.syscfg['device']['sem'] == 'Unknown':
+            # SBEMimage started with default configuration, no SEM selected yet.
+            # Use base class in simulation mode
+            self.sem = SEM(self.cfg, self.syscfg)
+            self.simulation_mode = True
         else:
-            # No other SEMs supported at the moment
-            self.sem = None
+            # Unknown model selected, show warning and use base class to support
+            # simulation mode
+            self.sem = SEM(self.cfg, self.syscfg)
             utils.log_warning(
-                'SEM', 'No SEM found, or incompatible SEM selected.')
+                'SEM', 'No SEM or incompatible model selected.')
             QMessageBox.warning(
-                self, 'No SEM found',
-                'No SEM was found, or an incompatible SEM was selected. '
-                'Check your system configuration file.'
-                '\nSBEMimage will be run in simulation mode.',
+                self, 'No SEM selected',
+                'No SEM or an incompatible model was selected. '
+                'Restart SBEMimage and click on "SEM/microtome setup" to '
+                'load presets for supported models, or manually check '
+                'your system configuration file.'
+                '\n\nSBEMimage will be run in simulation mode.',
                 QMessageBox.Ok)
             self.simulation_mode = True
 
@@ -159,6 +195,7 @@ class MainControls(QMainWindow):
         # Set up the objects to manage overviews, grids, and imported images
         self.ovm = OverviewManager(self.cfg, self.sem, self.cs)
         self.gm = GridManager(self.cfg, self.sem, self.cs)
+        self.tm = TemplateManager(self.ovm)
         self.imported = ImportedImages(self.cfg)
 
         # Notify user if imported images could not be loaded
@@ -176,7 +213,8 @@ class MainControls(QMainWindow):
         utils.show_progress_in_console(30)
 
         # Initialize microtome
-        if self.use_microtome and (self.syscfg['device']['microtome'] == '0'):
+        if (self.use_microtome 
+                and self.syscfg['device']['microtome'] == 'Gatan 3View'):
             # Create object for 3View microtome (control via DigitalMicrograph)
             self.microtome = Microtome_3View(self.cfg, self.syscfg)
             if self.microtome.error_state in [Error.dm_init, Error.dm_comm_send, Error.dm_comm_response, Error.dm_comm_retval]:
@@ -205,13 +243,34 @@ class MainControls(QMainWindow):
                         'CTRL',
                         'Second attempt to initialize '
                         'DigitalMicrograph API successful.')
-        elif self.use_microtome and (self.syscfg['device']['microtome'] == '5'):
+        elif (self.use_microtome 
+                and self.syscfg['device']['microtome'] == 'ConnectomX katana'):
             # Initialize katana microtome
             self.microtome = Microtome_katana(self.cfg, self.syscfg)
-        elif self.use_microtome and (self.syscfg['device']['microtome'] == '6'):
+        elif (self.use_microtome 
+                and self.syscfg['device']['microtome'] == 'GCIB'):
             self.microtome = GCIB(self.cfg, self.syscfg, self.sem)
-        else:
-            # Otherwise use SEM stage
+        elif (self.use_microtome
+                and self.syscfg['device']['microtome'] == 'Unknown'):
+            # Started with default system configuration for the first time; use base class
+            self.microtome = Microtome(self.cfg, self.syscfg)
+        elif (self.use_microtome
+                and self.syscfg['device']['microtome'] == 'Mock Microtome'):
+            self.microtome = Microtome_Mock(self.cfg, self.syscfg)
+        else: 
+            # No microtome or unknown device
+            # Show warning if use_microtome set to True
+            if self.use_microtome:
+                utils.log_error('CTRL', 'Unknown microtome selected, SEM stage will be used.')
+                QMessageBox.warning(
+                    self, 'Unknown microtome model selected',
+                    'An unknown microtome model was selected. '
+                    'Restart SBEMimage and click on "SEM/microtome setup" to '
+                    'load presets for supported models, or manually check '
+                    'your system configuration file.',
+                    QMessageBox.Ok)
+            self.use_microtome = False
+            self.cfg['sys']['use_microtome'] == 'False'
             self.microtome = None
 
         if self.microtome is not None and self.microtome.error_state == Error.configuration:
@@ -258,7 +317,11 @@ class MainControls(QMainWindow):
             self.vp_installed = self.sem.has_vp()
         else:
             self.vp_installed = False
-        self.fcc_installed = self.sem.has_fcc()
+
+        if self.syscfg['device']['sem'].startswith('ZEISS'):
+            self.fcc_installed = self.sem.has_fcc()
+        else:
+            self.fcc_installed = False
 
         self.initialize_main_controls_gui()
 
@@ -294,7 +357,7 @@ class MainControls(QMainWindow):
         self.viewport = Viewport(self.cfg, self.sem, self.stage, self.cs,
                                  self.ovm, self.gm, self.imported,
                                  self.autofocus, self.acq, self.img_inspector,
-                                 self.trigger)
+                                 self.trigger, self.tm)
         self.viewport.show()
 
         # Draw the viewport canvas
@@ -323,6 +386,46 @@ class MainControls(QMainWindow):
 
         print('\n\nReady.\n')
         self.set_statusbar('Ready.')
+
+        # If user has selected the default configuration and no custom system
+        # configuration files exist, provide guidance depending on whether presets
+        # were selected.
+        if self.cfg_file == 'default.ini':
+            # Check how many .cfg files exist
+            cfgfile_counter = 0
+            for file in os.listdir('..\\cfg'):
+                if file.endswith('.cfg'):
+                    cfgfile_counter += 1
+            # Check if presets loaded 
+            presets_loaded = (self.syscfg['device']['sem'] != 'Unknown')
+
+            if cfgfile_counter == 0 and self.simulation_mode:
+                if presets_loaded:
+                    QMessageBox.information(
+                        self, 'Welcome to SBEMimage!',
+                        'You can explore the user interface in simulation mode. '
+                        '\n\nYou have selected device presets: The correct SEM model '
+                        'and (optional) microtome model should be displayed in the '
+                        'Main Controls window.'
+                        '\n\nGo to:\n'
+                        'Menu  →  Configuration  →  Save as new configuration file'
+                        '\nto create a custom session configuration and a system '
+                        'configuration file. '
+                        '\n\nThen leave simulation mode:\n'
+                        'Menu  →  Configuration  →  Leave simulation mode'
+                        '\nRestart SBEMimage and load your new configuration file. '
+                        '\n\nFollow the instructions in the user guide '
+                        '(sbemimage.readthedocs.io) to calibrate your setup.',
+                        QMessageBox.Ok)
+                else:
+                    QMessageBox.information(
+                        self, 'Welcome to SBEMimage!',
+                        'You can explore the user interface in simulation mode. '
+                        '\n\nPlease note that you have not selected any device '
+                        'presets.\nTo use SBEMimage on your SEM setup, please '
+                        'restart the software and click on the button '
+                        '"SEM/microtome setup" in the start-up dialog.',
+                        QMessageBox.Ok)
 
         if self.simulation_mode:
             utils.log_info('CTRL', 'Simulation mode active.')
@@ -353,46 +456,6 @@ class MainControls(QMainWindow):
                 + ' Please make sure that the Z position is correct.',
                 QMessageBox.Ok)
 
-        # If user has selected the default.ini configuration, provide some
-        # guidance
-        if self.cfg_file == 'default.ini':
-            # Check how many .cfg files exist
-            cfgfile_counter = 0
-            for file in os.listdir('..\\cfg'):
-                if file.endswith('.cfg'):
-                    cfgfile_counter += 1
-            if cfgfile_counter > 1:
-                # Explain that default.ini will use the default system
-                # configuration.
-                QMessageBox.warning(
-                    self, 'Default user and system configuration',
-                    'You have selected default.ini to load SBEMimage, but '
-                    'there is at least one custom system configuration file '
-                    'available for this installation.\nPlease note that '
-                    'default.ini will use the unmodified default system '
-                    'configuration (system.cfg), which will probably not work '
-                    'for your setup.'
-                    '\n\nIf you want to create new user configuration files, '
-                    'you should first load a configuration other than '
-                    'default.ini.',
-                    QMessageBox.Ok)
-            elif self.simulation_mode:
-                # Show welcome message if SBEMimage is started with default.ini
-                # in simulation mode and no custom system configuration exists.
-                QMessageBox.information(
-                    self, 'Welcome to SBEMimage',
-                    'You can explore the user interface in simulation mode. If you '
-                    'want to get started with using SBEMimage on your '
-                    'SEM/microtome setup, save the current configuration '
-                    'under a new name. This will create a new custom user '
-                    'configuration file and a system configuration file:\n'
-                    'Menu  →  Configuration  →  Save as new configuration file'
-                    '\n\nThen leave the simulation mode:\n'
-                    'Menu  →  Configuration  →  Leave simulation mode'
-                    '\nRestart SBEMimage and load your new configuration file.'
-                    '\n\nFollow the instructions in the user guide '
-                    '(sbemimage.readthedocs.io) to calibrate your setup.',
-                    QMessageBox.Ok)
 
     def initialize_main_controls_gui(self):
         """Load and set up the Main Controls GUI"""
@@ -525,9 +588,8 @@ class MainControls(QMainWindow):
         self.pushButton_testNearKnife.clicked.connect(self.test_near_knife)
         self.pushButton_testClearKnife.clicked.connect(self.test_clear_knife)
         self.pushButton_testGetMillPos.clicked.connect(self.test_get_mill_pos)
-        self.pushButton_testMoveMillPos.clicked.connect(self.test_set_mill_pos)
-        self.pushButton_testMovePriorMillPos.clicked.connect(
-            self.test_set_pos_prior_mill_mov)
+        self.pushButton_testMillMov.clicked.connect(self.test_mill_mov)
+        self.pushButton_testMilling.clicked.connect(self.test_milling)
         self.pushButton_testSendCommand.clicked.connect(
             self.open_send_command_dlg)
         self.pushButton_testRunMaintenanceMoves.clicked.connect(
@@ -610,6 +672,21 @@ class MainControls(QMainWindow):
             self.tabWidget.tabBarDoubleClicked.connect(self.activate_magc_mode)
         else:
             self.initialize_magc_gui()
+        #------------------#
+
+        #-------MultiSEM-------#
+        if self.multisem_mode:
+            # no aboutBox in MultiSEM API
+            self.pushButton_testZeissAPIVersion.setEnabled(False)
+
+            self.pushButton_msem_transferToZen.setEnabled(False)
+            self.gm[0].size = [1,1]
+            self.msem_variables = {}
+        else:
+            # Disable MultiSEM tab
+            self.tabWidget.setTabEnabled(4, False)
+            self.tabWidget.setTabToolTip(4, 'MultiSEM mode under development')
+        #----------------------#
 
     def activate_magc_mode(self, tabIndex):
         if tabIndex != 3:
@@ -771,7 +848,12 @@ class MainControls(QMainWindow):
             str(self.gm[self.grid_index_dropdown].number_active_tiles()))
         # Acquisition parameters
         self.lineEdit_baseDir.setText(self.acq.base_dir)
-        self.label_numberSlices.setText(str(self.acq.number_slices))
+        if self.acq.use_target_z_diff:
+            self.label_t.setText("Target Z depth (μm):")
+            self.label_target.setText(str(self.acq.target_z_diff))
+        else:
+            self.label_t.setText("Target number of slices:")
+            self.label_target.setText(str(self.acq.number_slices))
         if self.use_microtome:
             self.label_sliceThickness.setText(
                 str(self.acq.slice_thickness) + ' nm')
@@ -803,7 +885,7 @@ class MainControls(QMainWindow):
             f'{total_stage_moves/total_duration * 100:.1f}% / '
             f'{total_cutting/total_duration * 100:.1f}%)')
         self.label_totalArea.setText('{0:.1f}'.format(total_area) + ' µm²')
-        self.label_totalZ.setText('{0:.1f}'.format(total_z) + ' µm')
+        self.label_totalZ.setText('{0:.2f}'.format(total_z) + ' µm')
         self.label_totalData.setText('{0:.1f}'.format(total_data) + ' GB')
         days, hours, minutes = utils.get_days_hours_minutes(remaining_time)
         self.label_dateEstimate.setText(
@@ -879,7 +961,7 @@ class MainControls(QMainWindow):
     def initialize_magc_gui(self):
         self.gm.magc_selected_sections = []
         self.gm.magc_checked_sections = []
-        self.gm.magc_wafer_calibrated = False
+        self.cs.magc_wafer_calibrated = False
         self.actionImportMagCMetadata.triggered.connect(
             self.magc_open_import_dlg)
 
@@ -929,7 +1011,7 @@ class MainControls(QMainWindow):
             self.pushButton_magc_importWaferImage.setEnabled(False)
         self.pushButton_magc_addSection.clicked.connect(
             self.magc_add_section)
-        if not self.gm.magc_wafer_calibrated:
+        if not self.cs.magc_wafer_calibrated:
             self.pushButton_magc_addSection.setEnabled(False)
         self.pushButton_magc_deleteLastSection.clicked.connect(
             self.magc_delete_last_section)
@@ -943,6 +1025,144 @@ class MainControls(QMainWindow):
         self.actionMicrotomeSettings.setEnabled(False)
         self.actionDebrisDetectionSettings.setEnabled(False)
         self.actionAskUserModeSettings.setEnabled(False)
+
+        # multisem
+        self.pushButton_msem_loadZen.clicked.connect(
+            self.msem_import_zen_experiment)
+        self.label_input_experiment_flag.setAlignment(
+            Qt.AlignCenter)
+        self.pushButton_msem_exportZen.setEnabled(False)
+        self.pushButton_msem_exportZen.clicked.connect(
+            self.msem_export_zen_experiment)
+
+    def msem_import_zen_experiment(self):
+        import_zen_dialog = ImportZENExperimentDlg(
+            self.msem_variables, self.trigger)
+        if import_zen_dialog.exec_():
+            pass
+
+    def msem_export_zen_experiment(self):
+        save_dir = os.path.dirname(
+            self.msem_variables['zen_input_path'])
+        save_name = (
+            self.textEdit_msem_zen_export_name.toPlainText()
+            + '.json')
+        zen_output_path = os.path.join(save_dir, save_name)
+        with open(
+            self.msem_variables['zen_input_path'],
+            'rb') as f:
+            input_json = json.load(f)
+
+        output_json = copy.deepcopy(input_json)
+        output_json['Name'] = os.path.splitext(save_name)[0]
+        # print(json.dumps(output_json, indent=4, sort_keys=True))
+
+        input_regions = input_json['Regions']
+        region_template_xml = ET.fromstring(input_regions[0])
+
+        # WorkflowParameter_element = region_template_xml.find('WorkflowParameter')
+        # print(json.dumps(WorkflowParameter_element.attrib, indent=4))
+
+        output_regions = []
+        polyrois = [
+            self.gm[id].magc_polyroi_points
+            for id in range(self.gm.number_grids)]
+        if [] in polyrois:
+            self.add_to_log(
+                'MSEM: No file written. These sections lack a ROI: '
+                + ', '.join(
+                    [str(i) for i,p in enumerate(polyrois) if p == []]))
+            return
+        all_focus_points = [
+            self.gm[id].magc_autofocus_points
+            for id in range(self.gm.number_grids)]
+
+        for id, (polyroi, focus_points) \
+            in enumerate(zip(polyrois, all_focus_points)):
+
+            output_region = copy.deepcopy(region_template_xml)
+
+            # set name
+            output_region.attrib['Name'] = 'Section' + str(id).zfill(4)
+
+            # set ROI points
+            (output_region
+                .find('Contour')
+                .attrib['Type']) = 'Polygon'
+
+            # remove existing contours
+            while output_region.find('Contour'):
+                output_region.find('Contour').remove(
+                    output_region.find('Contour')[0])
+
+            points_element = ET.SubElement(
+                output_region.find('Contour'),
+                'Points')
+            points_element.text = ' '.join(
+                [','.join(map(str, point))
+                    for point in polyroi])
+
+            # set ROI center position
+            (output_region
+                .find('CenterPosition')
+                .text) = ','.join(
+                    map(str,
+                        utils.barycenter(polyroi)))
+
+            # set autofocus points
+            focus_points_elements = output_region.find('SupportPoints')
+            # remove elements of focus_points_elements
+            while focus_points_elements:
+                focus_points_elements.remove(focus_points_elements[0])
+            for focus_id, focus_point in enumerate(focus_points):
+                point_id = int(id * 10e10 + focus_id)
+                focus_point_element = ET.SubElement(
+                    focus_points_elements,
+                    'SupportPoint')
+                focus_point_element.attrib['Id'] = str(point_id).zfill(18)
+                X_element = ET.SubElement(focus_point_element, 'X')
+                Y_element = ET.SubElement(focus_point_element, 'Y')
+                Z_element = ET.SubElement(focus_point_element, 'Z')
+                OL_element = ET.SubElement(focus_point_element, 'OL')
+                OLTiltX_element = ET.SubElement(focus_point_element, 'OLTiltX')
+                OLTiltY_element = ET.SubElement(focus_point_element, 'OLTiltY')
+
+                X_element.text = str(focus_point[0])
+                Y_element.text = str(focus_point[1])
+                Z_element.text = str(0)
+                OL_element = str(0)
+                OLTiltX_element = str(0)
+                OLTiltY_element = str(0)
+
+            output_regions.append(
+                ET.tostring(
+                    output_region,
+                    encoding='unicode', # utf8 returns a bytestring
+                    method='xml'))
+        output_json['Regions'] = output_regions
+
+        with open(
+            zen_output_path,
+            'w',
+            encoding='utf-8') as f:
+            json.dump(output_json,
+                f,
+                indent=4)
+
+        self.add_to_log(
+            'MSEM: ZEN experiment written to '
+            + zen_output_path)
+
+
+    def msem_update_gui(self, msg):
+        input_text, input_color, output_text = msg.split('-')[1:]
+        self.label_input_experiment_flag.setText(input_text)
+        (self.label_input_experiment_flag
+            .setStyleSheet(
+                'background-color: ' + input_color))
+        self.textEdit_msem_zen_export_name.setPlainText(output_text)
+        if input_color == 'green':
+            self.pushButton_msem_exportZen.setEnabled(True)
 
     def magc_select_all(self):
         model = self.tableView_magc_sections.model()
@@ -972,8 +1192,23 @@ class MainControls(QMainWindow):
             id.row() for id
                 in self.tableView_magc_sections
                     .selectedIndexes()]
-        model = tableView.model()
+        model = self.tableView_magc_sections.model()
         rowsToSelect = set(range(model.rowCount())) - set(selectedRows)
+        self.magc_select_rows(rowsToSelect)
+
+    def magc_toggle_selection(self, section_number):
+        # ctrl+click in viewport: select or deselect clicked
+        # section without changing existing selected sections
+        selectedRows = [
+            id.row() for id
+                in self.tableView_magc_sections
+                    .selectedIndexes()]
+        rowsToSelect = set(selectedRows)
+        if section_number in selectedRows:
+            rowsToSelect.remove(section_number)
+        else:
+            rowsToSelect.add(section_number)
+        rowsToSelect = list(rowsToSelect)
         self.magc_select_rows(rowsToSelect)
 
     def magc_select_checked(self):
@@ -1021,7 +1256,7 @@ class MainControls(QMainWindow):
                 QItemSelection(index, index),
                 QItemSelectionModel.Select)
         selectionModel.select(selection, QItemSelectionModel.Select)
-        self.tableView_magc_sections.setFocus()
+        tableView.setFocus()
 
     def magc_actions_selected_sections_changed(
         self, changedSelected, changedDeselected):
@@ -1058,9 +1293,10 @@ class MainControls(QMainWindow):
         sectionKey = int(model.data(firstColumnIndex))
         self.cs.vp_centre_dx_dy = self.gm[row].centre_dx_dy
         self.viewport.vp_draw()
-        if self.gm.magc_wafer_calibrated:
-            utils.log_info('Section ' + str(sectionKey)
-                                + ' has been double-clicked. Moving to section...')
+
+        if self.cs.magc_wafer_calibrated:
+            self.add_to_log('Section ' + str(sectionKey)
+                            + ' has been double-clicked. Moving to section...')
             # set scan rotation
             theta = self.gm[row].rotation
             self.sem.set_scan_rotation(theta)
@@ -1075,39 +1311,71 @@ class MainControls(QMainWindow):
 
     def magc_set_section_state_in_table(self, msg):
         model = self.tableView_magc_sections.model()
-        section_number, state = msg.split('-')[1:]
-        if state == 'acquiring':
-            state_color = QColor(Qt.yellow)
-        elif state == 'acquired':
-            state_color = QColor(Qt.green)
-        else:
-            state_color = QColor(Qt.lightGray)
-        item = model.item(int(section_number), 1)
-        item.setBackground(state_color)
-        index = model.index(int(section_number), 1)
-        self.tableView_magc_sections.scrollTo(index,
-            QAbstractItemView.PositionAtCenter)
+        section_number = int(msg.split('-')[-2])
+        state = msg.split('-')[-1]
+        index = model.index(section_number, 1)
+        if 'acquir' in state:
+            if state == 'acquiring':
+                state_color = QColor(Qt.yellow)
+            elif state == 'acquired':
+                state_color = QColor(Qt.green)
+            else:
+                state_color = QColor(Qt.lightGray)
+            item = model.item(section_number, 1)
+            item.setBackground(state_color)
+            self.tableView_magc_sections.scrollTo(
+                index,
+                QAbstractItemView.PositionAtCenter)
+        if state == 'select':
+            self.magc_select_rows([section_number])
+            self.tableView_magc_sections.scrollTo(
+                index,
+                QAbstractItemView.PositionAtCenter)
+        if state == 'toggle':
+            self.magc_toggle_selection(section_number)
+            if section_number in self.gm.magc_selected_sections:
+                self.tableView_magc_sections.scrollTo(
+                    index,
+                    QAbstractItemView.PositionAtCenter)
+        if state == 'deselectall':
+            self.magc_deselect_all()
 
     def magc_reset(self):
         model = self.tableView_magc_sections.model()
         model.removeRows(0, model.rowCount(), QModelIndex())
         self.gm.magc_sections_path = ''
-        self.gm.magc_wafer_calibrated = False
+        self.cs.magc_wafer_calibrated = False
+        self.magc_trigger_wafer_uncalibrated()
+        # the trigger shows only that the wafer is not calibrated
+        # but the reset is stronger: it means that the wafer
+        # is not calibratable, therefore setting gray color
+        self.pushButton_magc_waferCalibration.setStyleSheet(
+            'background-color: lightgray')
         self.gm.magc_selected_sections = []
         self.gm.magc_checked_sections = []
         self.gm.delete_all_grids_above_index(0)
+        self.gm[0].magc_delete_autofocus_points()
+        self.gm[0].magc_delete_polyroi()
         self.viewport.update_grids()
-        # unenable wafer calibration button
-        self.pushButton_magc_waferCalibration.setEnabled(False)
         # unenable wafer image import
         self.pushButton_magc_importWaferImage.setEnabled(False)
-        # change wafer flag
-        self.pushButton_magc_waferCalibration.setStyleSheet(
-            'background-color: lightgray')
         # delete all imported images in viewport
         self.imported.delete_all_images()
         self.viewport.vp_draw()
 
+    def magc_trigger_wafer_calibrated(self):
+        (self.pushButton_magc_waferCalibration
+            .setStyleSheet('background-color: green'))
+        self.pushButton_msem_transferToZen.setEnabled(True)
+
+    def magc_trigger_wafer_uncalibrated(self):
+        # unenable wafer calibration button
+        self.pushButton_magc_waferCalibration.setEnabled(False)
+        # change wafer flag
+        (self.pushButton_magc_waferCalibration
+            .setStyleSheet('background-color: yellow'))
+        # inactivate msem transfer to ZEN
+        self.pushButton_msem_transferToZen.setEnabled(False)
 
     def magc_open_import_wafer_image(self):
         target_dir = os.path.join(
@@ -1143,30 +1411,30 @@ class MainControls(QMainWindow):
         item2.setBackground(color_not_acquired)
         item2.setCheckable(False)
         item2.setSelectable(False)
-        tableView = self.tableView_magc_sections
-        model = tableView.model()
+        model = self.tableView_magc_sections.model()
         model.appendRow([item1, item2])
 
     def magc_delete_last_section(self):
         # remove section from list
         model = self.tableView_magc_sections.model()
         lastSectionNumber = model.rowCount()-1
-        model.removeRow(lastSectionNumber)
-        # unselect and uncheck section
-        if lastSectionNumber in self.gm.magc_selected_sections:
-            self.gm.magc_selected_sections.remove(lastSectionNumber)
+        if lastSectionNumber > 0:
+            model.removeRow(lastSectionNumber)
+            # unselect and uncheck section
+            if lastSectionNumber in self.gm.magc_selected_sections:
+                self.gm.magc_selected_sections.remove(lastSectionNumber)
 
-        if lastSectionNumber in self.gm.magc_checked_sections:
-            self.gm.magc_checked_sections.remove(lastSectionNumber)
+            if lastSectionNumber in self.gm.magc_checked_sections:
+                self.gm.magc_checked_sections.remove(lastSectionNumber)
 
-        # remove grid
-        self.gm.delete_grid()
-        self.update_from_grid_dlg()
+            # remove grid
+            self.gm.delete_grid()
+            self.update_from_grid_dlg()
 
     def magc_open_import_dlg(self):
         gui_items = {'section_table': self.tableView_magc_sections,}
         dialog = ImportMagCDlg(self.acq, self.gm, self.sem, self.imported,
-                               gui_items, self.trigger)
+                               self.cs, gui_items, self.trigger)
         if dialog.exec_():
             # self.tabWidget.setTabEnabled(3, True)
             self.update_from_grid_dlg()
@@ -1421,15 +1689,26 @@ class MainControls(QMainWindow):
 
     def show_stack_progress(self):
         current_slice = self.acq.slice_counter
-        if self.acq.number_slices > 0:
-            self.label_sliceCounter.setText(
-                str(current_slice) + '      (' + chr(8710) + 'Z = '
-                + '{0:.3f}'.format(self.acq.total_z_diff) + ' µm)')
+        total_z_diff = self.acq.total_z_diff
+
+        if self.acq.use_target_z_diff:
+            self.label_cp.setText("Current Z depth:")
+            self.label_currentPosition.setText(
+                '{0:.3f}'.format(total_z_diff) + ' µm' + '      (slice no. = '
+                + str(current_slice) + ")")
             self.progressBar.setValue(
-                current_slice / self.acq.number_slices * 100)
+                total_z_diff / self.acq.target_z_diff * 100)
         else:
-            self.label_sliceCounter.setText(
-                str(current_slice) + "      (no cut after acq.)")
+            self.label_cp.setText("Current slice:")
+            if self.acq.number_slices > 0:
+                self.label_currentPosition.setText(
+                    str(current_slice) + '      (' + chr(8710) + 'Z = '
+                    + '{0:.3f}'.format(self.acq.total_z_diff) + ' µm)')
+                self.progressBar.setValue(
+                    current_slice / self.acq.number_slices * 100)
+            else:
+                self.label_currentPosition.setText(
+                    str(current_slice) + "      (no cut after acq.)")
 
     def show_current_stage_xy(self):
         xy_pos = self.stage.last_known_xy
@@ -1560,17 +1839,19 @@ class MainControls(QMainWindow):
                 utils.log_error('CTRL', 'Could not write current log to disk: '
                                 + str(e))
         elif msg == 'MAGC WAFER CALIBRATED':
-            self.pushButton_magc_waferCalibration.setStyleSheet('background-color: green')
+            self.magc_trigger_wafer_uncalibrated()
         elif msg == 'MAGC WAFER NOT CALIBRATED':
-            self.pushButton_magc_waferCalibration.setStyleSheet('background-color: yellow')
+            self.magc_trigger_wafer_uncalibrated()
         elif msg == 'MAGC ENABLE CALIBRATION':
             self.pushButton_magc_waferCalibration.setEnabled(True)
         elif msg == 'MAGC UNENABLE CALIBRATION':
             self.pushButton_magc_waferCalibration.setEnabled(False)
         elif msg == 'MAGC ENABLE WAFER IMAGE IMPORT':
             self.pushButton_magc_importWaferImage.setEnabled(True)
-        elif 'SET SECTION STATE' in msg:
+        elif 'MAGC SET SECTION STATE' in msg:
             self.magc_set_section_state_in_table(msg)
+        elif 'MSEM GUI' in msg:
+            self.msem_update_gui(msg)
         elif msg == 'REFRESH OV':
             self.acquire_ov()
         elif msg == 'SHOW CURRENT SETTINGS':
@@ -1748,8 +2029,8 @@ class MainControls(QMainWindow):
         self.pushButton_testNearKnife.setEnabled(b)
         self.pushButton_testClearKnife.setEnabled(b)
         self.pushButton_testGetMillPos.setEnabled(b)
-        self.pushButton_testMoveMillPos.setEnabled(b)
-        self.pushButton_testMovePriorMillPos.setEnabled(b)
+        self.pushButton_testMillMov.setEnabled(b)
+        self.pushButton_testMilling.setEnabled(b)
         self.pushButton_testStopDMScript.setEnabled(b)
         self.pushButton_testPlasmaCleaner.setEnabled(b)
         self.pushButton_testMotors.setEnabled(b)
@@ -1762,7 +2043,7 @@ class MainControls(QMainWindow):
         self.pushButton_doApproach.setEnabled(False)
         self.pushButton_doSweep.setEnabled(False)
         self.pushButton_grabFrame.setEnabled(False)
-        self.pushButton_EHTToggle.setEnabled(False)
+        #self.pushButton_EHTToggle.setEnabled(False)
         self.actionSEMSettings.setEnabled(False)
         self.actionStageCalibration.setEnabled(False)
         self.actionPlasmaCleanerSettings.setEnabled(False)
@@ -1782,8 +2063,8 @@ class MainControls(QMainWindow):
 
     def restrict_gui_wo_gcib(self):
         self.pushButton_testGetMillPos.setEnabled(False)
-        self.pushButton_testMoveMillPos.setEnabled(False)
-        self.pushButton_testMovePriorMillPos.setEnabled(False)
+        self.pushButton_testMillMov.setEnabled(False)
+        self.pushButton_testMilling.setEnabled(False)
 
     #TODO: remove
     def add_to_log(self, text):
@@ -1944,22 +2225,36 @@ class MainControls(QMainWindow):
             utils.log_warning('CTRL', 'No microtome, or microtome not active.')
 
     def test_set_mill_pos(self):
+        # Deprecated
         if self.use_microtome:
             self.microtome.move_stage_to_millpos()
-            if self.microtome.error_state != 0:
+            if self.microtome.error_state != Error.none:
                 utils.log_info('CTRL', f'Microtome error {self.microtome.error_state}: {self.microtome.error_info}')
                 self.microtome.reset_error_state()
         else:
             utils.log_warning('CTRL', 'No microtome, or microtome not active.')
 
     def test_set_pos_prior_mill_mov(self):
+        # Deprecated
         if self.use_microtome:
             self.microtome.move_stage_to_pos_prior_mill_mov()
-            if self.microtome.error_state != 0:
+            if self.microtome.error_state != Error.none:
                 utils.log_info('CTRL', f'Microtome error {self.microtome.error_state}: {self.microtome.error_info}')
                 self.microtome.reset_error_state()
         else:
             utils.log_warning('CTRL', 'No microtome, or microtome not active.')
+
+    def test_mill_mov(self, duration: Optional[int] = 0):
+        if self.use_microtome:
+            self.microtome.do_full_cut(mill_duration=duration, testing=True)
+            if self.microtome.error_state != Error.none:
+                utils.log_info('CTRL', f'Microtome error {self.microtome.error_state}: {self.microtome.error_info}')
+                self.microtome.reset_error_state()
+        else:
+            utils.log_warning('CTRL', 'No microtome, or microtome not active.')
+
+    def test_milling(self):
+        self.test_mill_mov(duration=None)
 
     def test_stop_dm_script(self):
         if self.use_microtome:
@@ -2175,7 +2470,7 @@ class MainControls(QMainWindow):
             self.pushButton_resetAcq.setEnabled(False)
             self.pushButton_pauseAcq.setEnabled(False)
             self.pushButton_startAcq.setEnabled(True)
-            self.label_sliceCounter.setText('---')
+            self.label_currentPosition.setText('---')
             self.progressBar.setValue(0)
             self.show_stack_acq_estimates()
             self.pushButton_startAcq.setText('START')
@@ -2249,6 +2544,12 @@ class MainControls(QMainWindow):
         """Save the updated ConfigParser objects for the user and the
         system configuration to disk.
         """
+        # If the current session configuration file is "default.ini",
+        # the user must create a new session configuration file
+        if self.cfg_file == 'default.ini':
+            self.open_save_settings_new_file_dlg()
+            return
+
         # TODO: Saving may take a while -> run in thread
         # TODO: Reconsider when and how tile previews are saved...
         if show_msg:
@@ -2267,6 +2568,7 @@ class MainControls(QMainWindow):
         self.acq.save_to_cfg()
         self.gm.save_to_cfg()
         self.ovm.save_to_cfg()
+        self.tm.save_to_cfg()
         self.imported.save_to_cfg()
         self.autofocus.save_to_cfg()
         if show_msg:
@@ -2297,7 +2599,8 @@ class MainControls(QMainWindow):
 
     def closeEvent(self, event):
         if self.microtome is not None and self.microtome.error_state == Error.configuration:
-            if self.sem.sem_api is not None:
+            if (self.sem.device_name.startswith('ZEISS')
+                    and self.sem.sem_api is not None):
                 self.sem.disconnect()
             print('\n\nError in configuration file. Aborted.\n')
             event.accept()
@@ -2316,7 +2619,8 @@ class MainControls(QMainWindow):
                     elif (self.use_microtome
                         and self.microtome.device_name == 'ConnectomX katana'):
                         self.microtome.disconnect()
-                    if self.sem.sem_api is not None:
+                    if (self.sem.device_name.startswith('ZEISS')
+                            and self.sem.sem_api is not None):
                         self.sem.disconnect()
                 if self.plc_initialized:
                     plasma_log_msg = self.plasma_cleaner.close_port()
@@ -2332,7 +2636,7 @@ class MainControls(QMainWindow):
                     if result == QMessageBox.Yes:
                         self.save_acq_notes()
                 if self.acq.acq_paused:
-                    if not(self.cfg_file == 'default.ini'):
+                    if self.cfg_file != 'default.ini':
                         QMessageBox.information(
                             self, 'Resume acquisition later',
                             'The current acquisition is paused. The current '
@@ -2342,7 +2646,7 @@ class MainControls(QMainWindow):
                             'configuration file.',
                             QMessageBox.Ok)
                         self.save_config_to_disk(show_msg=True)
-                    else:
+                    elif self.syscfg['device']['sem'] != 'Unknown':
                         result = QMessageBox.question(
                             self, 'Save settings?',
                             'Do you want to save the current settings to a '
@@ -2351,7 +2655,7 @@ class MainControls(QMainWindow):
                         if result == QMessageBox.Yes:
                             self.open_save_settings_new_file_dlg()
                 else:
-                    if not(self.cfg_file == 'default.ini'):
+                    if self.cfg_file != 'default.ini':
                         result = QMessageBox.question(
                             self, 'Save settings?',
                             'Do you want to save the current settings '
@@ -2360,7 +2664,7 @@ class MainControls(QMainWindow):
                             QMessageBox.Yes| QMessageBox.No)
                         if result == QMessageBox.Yes:
                             self.save_config_to_disk(show_msg=True)
-                    else:
+                    elif self.syscfg['device']['sem'] != 'Unknown':
                         result = QMessageBox.question(
                             self, 'Save settings?',
                             'Do you want to save the current '
@@ -2626,7 +2930,7 @@ class MainControls(QMainWindow):
         SEM control software and then manually set the tile/OV to the new focus
         parameters."""
         if (self.ft_selected_tile >=0) or (self.ft_selected_ov >= 0):
-            dialog = FTMoveDlg(self.microtome, self.cs, self.gm,
+            dialog = FTMoveDlg(self.stage, self.gm, self.ovm,
                                self.ft_selected_grid, self.ft_selected_tile,
                                self.ft_selected_ov)
             if dialog.exec_():
@@ -2668,6 +2972,7 @@ class MainControls(QMainWindow):
         self.tabWidget.setTabEnabled(2, False)
         self.tabWidget.setTabEnabled(3, False)
         self.tabWidget.setTabEnabled(4, False)
+        self.tabWidget.setTabEnabled(5, False)
         # Restrict viewport:
         self.viewport.restrict_gui(True)
         # Use current WD/Stig if selected working distance == 0 or None:
@@ -2764,7 +3069,9 @@ class MainControls(QMainWindow):
         self.tabWidget.setTabEnabled(2, True)
         if self.magc_mode:
             self.tabWidget.setTabEnabled(3, True)
-        self.tabWidget.setTabEnabled(4, True)
+        if self.multisem_mode:
+            self.tabWidget.setTabEnabled(4, True)
+        self.tabWidget.setTabEnabled(5, True)
         # Unrestrict viewport:
         self.viewport.restrict_gui(False)
         self.ft_mode = 0

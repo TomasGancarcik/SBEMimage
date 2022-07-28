@@ -16,18 +16,22 @@ import json
 import re
 import logging
 import threading
-from enum import Enum
-import numpy as np
+import math
 import cv2
-from skimage.transform import ProjectiveTransform
-from skimage.measure import ransac
+import numpy as np
 
+from enum import Enum
 from time import sleep
 from queue import Queue
-from serial.tools import list_ports
 from logging import StreamHandler
 from logging.handlers import RotatingFileHandler
+from shapely.geometry import Polygon
+from shapely.geometry import Point
+from skimage.transform import ProjectiveTransform
+from skimage.measure import ransac
+from serial.tools import list_ports
 from PyQt5.QtCore import QObject, pyqtSignal
+
 
 # Default and minimum size of the Viewport canvas.
 VP_WIDTH = 1000
@@ -140,6 +144,12 @@ class Error(Enum):
     # Error in configuration
     configuration = 701
 
+    # MultiSEM
+    multisem_beam_control = 901
+    multisem_imaging = 902
+    multisem_alignment = 903
+    multisem_failed_to_write = 904
+
 
 Errors = {
     Error.none: 'No error',
@@ -181,6 +191,12 @@ Errors = {
     Error.fcc: 'FCC error',
     Error.aperture_size: 'Aperture size error',
 
+    # MultiSEM
+    Error.multisem_beam_control: 'Error: beam control',
+    Error.multisem_imaging: 'Error: imaging not possible',
+    Error.multisem_alignment: 'Error: auto alignment not possible',
+    Error.multisem_failed_to_write: 'Error: failed to write metadata or thumbnails',
+
     # I/O error
     Error.primary_drive: 'Primary drive error',
     Error.mirror_drive: 'Mirror drive error',
@@ -202,6 +218,7 @@ Errors = {
 
     # Error in configuration
     Error.configuration: 'Configuration error',
+
 }
 
 
@@ -214,13 +231,14 @@ COLOUR_SELECTOR = [
     [0, 255, 255],      #3  cyan
     [128, 0, 0],        #4  dark red
     [0, 128, 0],        #5  dark green
-    [255, 165, 0],      #6  orange (also used for measuring tool)
+    [255, 165, 0],      #6  orange
     [255, 0, 255],      #7  pink
     [173, 216, 230],    #8  grey
     [184, 134, 11],     #9  brown
     [0, 0, 255],        #10 blue (used only for OVs)
     [50, 50, 50],       #11 dark grey for stub OV border
-    [128, 0, 128, 80]   #12 transparent violet (to indicate live acq)
+    [128, 0, 128, 80],  #12 transparent violet (to indicate live acq)
+    [255, 195, 0]       #13 bright orange (active user flag, measuring tool)
 ]
 
 
@@ -424,7 +442,11 @@ def show_progress_in_console(progress):
 
 def ov_save_path(base_dir, stack_name, ov_index, slice_counter):
     return os.path.join(
-        base_dir, 'overviews', 'ov' + str(ov_index).zfill(OV_DIGITS),
+        base_dir, ov_relative_save_path(stack_name, ov_index, slice_counter))
+
+def ov_relative_save_path(stack_name, ov_index, slice_counter):
+    return os.path.join(
+        'overviews', 'ov' + str(ov_index).zfill(OV_DIGITS),
         stack_name + '_ov' + str(ov_index).zfill(OV_DIGITS)
         + '_s' + str(slice_counter).zfill(SLICE_DIGITS) + '.tif')
 
@@ -472,6 +494,10 @@ def ov_reslice_save_path(base_dir, ov_index):
 def tile_id(grid_index, tile_index, slice_counter):
     return (str(grid_index).zfill(GRID_DIGITS)
             + '.' + str(tile_index).zfill(TILE_DIGITS)
+            + '.' + str(slice_counter).zfill(SLICE_DIGITS))
+
+def overview_id(ov_index, slice_counter):
+    return (str(ov_index).zfill(OV_DIGITS)
             + '.' + str(slice_counter).zfill(SLICE_DIGITS))
 
 def validate_tile_list(input_str):
@@ -541,11 +567,12 @@ def get_indexes_from_user_string(userString):
         splitIndexes = [int(splitIndex) for splitIndex in userString.split('-')
                         if splitIndex.isdigit()]
         if len(splitIndexes) == 2 or len(splitIndexes) == 3:
-            splitIndexes[-1] = splitIndexes[-1] + 1 # inclusive is more natural (2-5 = 2,3,4,5)
+            splitIndexes[1] = splitIndexes[1] + 1 # inclusive is more natural (2-5 = 2,3,4,5)
             return range(*splitIndexes)
     elif userString.isdigit():
         return [int(userString)]
     return None
+
 
 def get_days_hours_minutes(duration_in_seconds):
     minutes, seconds = divmod(int(duration_in_seconds), 60)
@@ -558,12 +585,15 @@ def get_hours_minutes(duration_in_seconds):
     hours, minutes = divmod(minutes, 60)
     return hours, minutes
 
+
 def get_serial_ports():
     return [port.device for port in list_ports.comports()]
 
-def round_xy(coordinates):
+
+def round_xy(coordinates, digits=3):
     x, y = coordinates
-    return [round(x, 3), round(y, 3)]
+    return [round(x, digits), round(y, digits)]
+
 
 def round_floats(input_var, precision=3):
     """Round floats, or (nested) lists of floats."""
@@ -572,6 +602,7 @@ def round_floats(input_var, precision=3):
     if isinstance(input_var, list):
         return [round_floats(entry) for entry in input_var]
     return input_var
+
 
 # ----------------- Functions for geometric transforms (MagC) ------------------
 def affineT(x_in, y_in, x_out, y_out):
@@ -694,6 +725,9 @@ def sectionsYAML_to_sections_landmarks(sectionsYAML):
 
 
 class TranslationTransform(ProjectiveTransform):
+    """
+    Helper Transform class for pure translations.
+    """
     def estimate(self, src, dst):
         try:
             T = np.mean(dst, axis=0) - np.mean(src, axis=0)
@@ -709,10 +743,22 @@ class TranslationTransform(ProjectiveTransform):
 
 
 def align_images_cv2(src: np.ndarray, target: np.ndarray) -> np.ndarray:
-    MAX_FEATURES = 1000
-    GOOD_MATCH_PERCENT = 0.3
+    """
+    Align (translation) two images with ORB, a SIFT variant, which extracts features in both images and matches them
+    according to ``cv2.DESCRIPTOR_MATCHER_BRUTEFORCE_HAMMING``. The final translation vector is estimated using
+    RANSAC with a fixed random state. Implementation is based on opencv (cv2 python module).
+
+    Args:
+        src: Source image.
+        target: Target image.
+
+    Returns:
+        Translation vector as the displacement from `src` to `target`.
+    """
+    MAX_FEATURES = 2000
+    GOOD_MATCH_PERCENT = 0.2
     # Detect ORB features and compute descriptors.
-    orb = cv2.ORB_create(MAX_FEATURES, nlevels=10, patchSize=60)
+    orb = cv2.ORB_create(MAX_FEATURES, nlevels=12, patchSize=128)
 
     kp1, des1 = orb.detectAndCompute(src, None)
     kp2, des2 = orb.detectAndCompute(target, None)
@@ -742,3 +788,102 @@ def align_images_cv2(src: np.ndarray, target: np.ndarray) -> np.ndarray:
     affine_m = model_robust.params[:2]
     # displacement from im1 to im2
     return affine_m[:, -1]  # only return translation vector
+
+
+def match_template(img: np.ndarray, templ: np.ndarray, thresh_match: float) -> np.ndarray:
+    """
+
+    Args:
+        img: Image.
+        templ: Template structure.
+        thresh_match: Matching score threshold.
+
+    Returns:
+        Mean pixel locations of connected components with high matching score within `img` array.
+    """
+    import skimage.feature
+    import scipy.ndimage
+    import skimage.measure
+    match = skimage.feature.match_template(img, templ, pad_input=True) > thresh_match
+    # get connected components
+    match, nb_matches = skimage.measure.label(match, background=0, return_num=True)
+    locs = np.zeros((nb_matches, 3))
+    for ix, sl in enumerate(scipy.ndimage.find_objects(match)):
+        # store coordinate of this object
+        locs[ix] = np.mean(match[sl] == (ix + 1)) + np.array([sl[0].start, sl[1].start])
+    return locs.astype(np.int)
+
+
+def is_convex_polygon(polygon):
+    """Source: https://stackoverflow.com/a/45372025/10832217
+    Return True if the polynomial defined by the sequence of 2D
+    points is 'strictly convex': points are valid, side lengths non-
+    zero, interior angles are strictly between zero and a straight
+    angle, and the polygon does not intersect itself.
+
+    NOTES:  1.  Algorithm: the signed changes of the direction angles
+                from one side to the next side must be all positive or
+                all negative, and their sum must equal plus-or-minus
+                one full turn (2 pi radians). Also check for too few,
+                invalid, or repeated points.
+            2.  No check is explicitly done for zero internal angles
+                (180 degree direction-change angle) as this is covered
+                in other ways, including the `n < 3` check.
+    """
+    try:  # needed for any bad points or direction changes
+        # Check for too few points
+        if len(polygon) < 3:
+            return False
+        # Get starting information
+        old_x, old_y = polygon[-2]
+        new_x, new_y = polygon[-1]
+        new_direction = math.atan2(new_y - old_y, new_x - old_x)
+        angle_sum = 0.0
+        # Check each point (the side ending there, its angle) and accum. angles
+        for ndx, newpoint in enumerate(polygon):
+            # Update point coordinates and side directions, check side length
+            old_x, old_y, old_direction = new_x, new_y, new_direction
+            new_x, new_y = newpoint
+            new_direction = math.atan2(new_y - old_y, new_x - old_x)
+            if old_x == new_x and old_y == new_y:
+                return False  # repeated consecutive points
+            # Calculate & check the normalized direction-change angle
+            angle = new_direction - old_direction
+            if angle <= -math.pi:
+                angle += (2 * math.pi)  # make it in half-open interval (-Pi, Pi]
+            elif angle > math.pi:
+                angle -= (2 * math.pi)
+            if ndx == 0:  # if first time through loop, initialize orientation
+                if angle == 0.0:
+                    return False
+                orientation = 1.0 if angle > 0.0 else -1.0
+            else:  # if other time through loop, check orientation is stable
+                if orientation * angle <= 0.0:  # not both pos. or both neg.
+                    return False
+            # Accumulate the direction-change angle
+            angle_sum += angle
+        # Check that the total number of full turns is plus-or-minus 1
+        return abs(round(angle_sum / (2 * math.pi) )) == 1
+    except (ArithmeticError, TypeError, ValueError):
+        return False  # any exception means not a proper convex polygon
+
+def is_valid_polygon(polygon):
+    p = Polygon(polygon)
+    return p.is_valid
+
+def is_point_inside_polygon(point, polygon):
+    p = Polygon(polygon)
+    point = Point(point)
+    return p.contains(point)
+
+def barycenter(points):
+    xSum = 0
+    ySum = 0
+    for i,point in enumerate(points):
+        xSum = xSum + point[0]
+        ySum = ySum + point[1]
+    x = round(xSum/float(i+1))
+    y = round(ySum/float(i+1))
+    return x,y
+
+# -------------- End of MagC utils --------------

@@ -23,6 +23,7 @@ import json
 import validators
 import requests
 import shutil
+import configparser
 
 from random import random
 from time import sleep, time
@@ -32,10 +33,11 @@ from math import atan, atan2, sqrt
 from statistics import mean
 from PIL import Image
 from skimage.io import imread
-from skimage.feature import register_translation
+from skimage.registration import phase_cross_correlation
 import numpy as np
 from imreg_dft import translation
 from zipfile import ZipFile
+from typing import Tuple
 
 from PyQt5.uic import loadUi
 from PyQt5.QtCore import Qt, QObject, QSize, pyqtSignal, QThread
@@ -44,6 +46,7 @@ from PyQt5.QtWidgets import QApplication, QDialog, QMessageBox, \
                             QFileDialog, QLineEdit, QDialogButtonBox
 
 import utils
+from sem_control_mock import SEM_Mock
 from utils import Error
 import acq_func
 
@@ -69,13 +72,18 @@ class UpdateQThread(QThread):
 class ConfigDlg(QDialog):
     """Start-up dialog window that lets user select a configuration file.
 
-    The previously used configuration is preselected in the list widget. If no
-    previously used configuration can be found, use default.ini. If status.dat
-    does not exists, show warning message box.
+    The previously used configuration file is preselected in the list widget.
+    The option to load the default configuration (default.ini, system.cfg and
+    presets) is shown as "Default Configuration".
+    When "Default Configuration" is selected, clicking on "SEM/Microtome setup"
+    opens a secondary dialog window, in which the user can select device presets
+    for different SEM and microtome models including mocks.
     """
 
     def __init__(self, VERSION):
         super().__init__()
+        self.device_presets_selection = [None, None]
+        self.load_presets_enabled = False
         loadUi('..\\gui\\config_dlg.ui', self)
         self.setWindowIcon(QIcon('..\\img\\icon_16px.ico'))
         if 'dev' in VERSION.lower():
@@ -89,12 +97,29 @@ class ConfigDlg(QDialog):
         self.setFixedSize(self.size())
         self.show()
         self.abort = False
+        # Connect button to load device selection dialog
+        self.pushButton_deviceSelection.clicked.connect(
+           self.open_device_selection_dlg)
+
+        # If the 'cfg' folder does not exist yet (first start of SBEMimage),
+        # create it and put empty file 'status.dat' into it.
+        if not os.path.exists('..\\cfg'):
+            os.makedirs('..\\cfg')
+            open('..\\cfg\\status.dat', 'a').close()
+
         # Populate the list widget with existing .ini files
         inifile_list = []
         for file in os.listdir('..\\cfg'):
             if file.endswith('.ini'):
                 inifile_list.append(file)
+        # Create entry "Default Configuration". Selecting it will
+        # load default.ini, system.cfg, and presets
+        inifile_list.append('Default Configuration')
+
         self.listWidget_filelist.addItems(inifile_list)
+        self.listWidget_filelist.itemSelectionChanged.connect(
+            self.ini_file_selection_changed)
+
         # Which .ini file was used previously? Check in status.dat
         if os.path.isfile('..\\cfg\\status.dat'):
             status_file = open('..\\cfg\\status.dat', 'r')
@@ -105,35 +130,41 @@ class ConfigDlg(QDialog):
                     last_inifile, Qt.MatchExactly)[0]
                 self.listWidget_filelist.setCurrentItem(last_item_used)
             except:
-                # If the file indicated in status.dat does not exist,
-                # select default.ini.
-                # This dialog is called from SBEMimage.py only if default.ini
-                # is found in cfg directory.
-                default_item = self.listWidget_filelist.findItems(
-                    'default.ini', Qt.MatchExactly)[0]
-                self.listWidget_filelist.setCurrentItem(default_item)
+                # If the file indicated in status.dat does not exist, select the
+                # first item of the list
+                self.listWidget_filelist.setCurrentRow(0)
         else:
             # If status.dat does not exist, the program must have crashed or a
-            # second instance is running. Preselect default.ini in the list,
-            # and display a warning. The warning is suppressed if
-            # inifile_list contains only default.ini.
-            default_item = self.listWidget_filelist.findItems(
-                'default.ini', Qt.MatchExactly)[0]
-            self.listWidget_filelist.setCurrentItem(default_item)
-            if len(inifile_list) > 1:
-                QMessageBox.warning(
-                    self, 'Warning: Crash occurred or other SBEMimage instance '
-                    'is running',
-                    'SBEMimage appears to have crashed during the '
-                    'previous run, or another instance of SBEMimage is already '
-                    'running. Please close the other instance or abort this '
-                    'one.\n\n'
-                    'If you want to continue an acquisition after a crash, '
-                    'double-check all settings before restarting!\n\n'
-                    'You can report a crash here, ideally with the error '
-                    'message(s) shown in the Console window: '
-                    'https://github.com/SBEMimage/SBEMimage/issues',
-                    QMessageBox.Ok)
+            # second instance is running. Select the first item of the list
+            # and display a warning.
+            self.listWidget_filelist.setCurrentRow(0)
+            QMessageBox.warning(
+                self, 'Warning: Crash occurred or other SBEMimage instance '
+                'is running',
+                'SBEMimage appears to have crashed during the '
+                'previous run, or another instance of SBEMimage is already '
+                'running. Please close the other instance or abort this '
+                'one.\n\n'
+                'If you want to continue an acquisition after a crash, '
+                'double-check all settings before restarting!\n\n'
+                'You can report a crash here, ideally with the error '
+                'message(s) shown in the Console window: '
+                'https://github.com/SBEMimage/SBEMimage/issues',
+                QMessageBox.Ok)
+
+    def ini_file_selection_changed(self):
+        # Enable device presets selection button if default.ini selected
+        if self.listWidget_filelist.currentItem().text() == 'Default Configuration':
+            self.pushButton_deviceSelection.setEnabled(True)
+        else:
+            self.pushButton_deviceSelection.setEnabled(False)
+
+    def open_device_selection_dlg(self):
+        dialog = DeviceSelectionDlg(self.load_presets_enabled,
+                                    self.device_presets_selection)
+        if dialog.exec_():
+            self.device_presets_selection = dialog.selected_presets
+            self.load_presets_enabled = dialog.presets_enabled
 
     def reject(self):
         self.abort = True
@@ -147,8 +178,77 @@ class ConfigDlg(QDialog):
 
 # ------------------------------------------------------------------------------
 
+class DeviceSelectionDlg(QDialog):
+    """Select SEM/microtome presets to be loaded into the system configuration.
+    """
+
+    def __init__(self, presets_enabled, selected_presets):
+        super().__init__()
+        self.selected_presets = selected_presets
+        self.presets_enabled = presets_enabled
+        loadUi('..\\gui\\device_selection_dlg.ui', self)
+        self.setWindowModality(Qt.ApplicationModal)
+        self.setWindowIcon(QIcon('..\\img\\icon_16px.ico'))
+        self.setFixedSize(self.size())
+        self.show()
+        syscfg = configparser.ConfigParser()
+        try:
+            with open('..\\src\\default_cfg\\system.cfg', 'r') as file:
+                syscfg.read_file(file)
+        except Exception as e:
+            QMessageBox.warning(
+                self, 'Error',
+                'Could not read list of supported devices from system.cfg\n'
+                'Exception: ' + str(e),
+                QMessageBox.Ok)
+            return
+
+        sem_list = ['None'] + json.loads(syscfg['device']['sem_recognized'])
+        microtome_list = (
+            ['None'] + json.loads(syscfg['device']['microtome_recognized']))
+
+        # Populate comboboxes with names of supported devices
+        self.comboBox_SEMs.addItems(sem_list)
+        self.comboBox_microtomes.addItems(microtome_list)
+        if self.selected_presets[0] is not None:
+            self.comboBox_SEMs.setCurrentIndex(
+                self.comboBox_SEMs.findText(self.selected_presets[0]))
+        if self.selected_presets[1] is not None:
+            self.comboBox_microtomes.setCurrentIndex(
+                self.comboBox_microtomes.findText(self.selected_presets[1]))
+
+        # Only enable comboboxes if "load presets" checked
+        self.checkBox_loadPresets.stateChanged.connect(
+            self.enable_device_selectors)
+        self.checkBox_loadPresets.setChecked(self.presets_enabled)
+
+    def enable_device_selectors(self):
+        self.comboBox_SEMs.setEnabled(
+            self.checkBox_loadPresets.isChecked())
+        self.comboBox_microtomes.setEnabled(
+            self.checkBox_loadPresets.isChecked())
+
+    def accept(self):
+        if self.checkBox_loadPresets.isChecked():
+            self.presets_enabled = True
+            if str(self.comboBox_SEMs.currentText()) != 'None':
+                self.selected_presets[0] = str(self.comboBox_SEMs.currentText())
+            else:
+                self.selected_presets[0] = None
+            if str(self.comboBox_microtomes.currentText()) != 'None':
+                self.selected_presets[1] = str(
+                    self.comboBox_microtomes.currentText())
+            else:
+                self.selected_presets[1] = None
+        else:
+            self.presets_enabled = False
+            self.selected_presets = [None, None]
+        super().accept()
+
+# ------------------------------------------------------------------------------
+
 class SaveConfigDlg(QDialog):
-    """Save current user configuration in a new config (.ini) file."""
+    """Save current session configuration in a new .ini file."""
 
     def __init__(self, syscfg_file='', new_syscfg=False):
         super().__init__()
@@ -167,15 +267,13 @@ class SaveConfigDlg(QDialog):
         # and enable lineEdit
         if new_syscfg:
             QMessageBox.information(
-                self, 'New user and system configuration',
-                'You are about to save a custom user configuation based '
+                self, 'New session and system configuration',
+                'You are about to save a custom session configuration based '
                 'on default.ini. Please also choose a name for your '
-                'system configuration in this dialog. The name you choose '
-                'will be used for all future user configurations '
-                'on this setup.\n\n'
-                'To create additional user configurations (after creating '
-                'this new one), please load any existing .ini file other than '
-                'default.ini and save it under a new name.',
+                'system configuration in this dialog.\n\n'
+                'To create additional session configuration files (after creating '
+                'this new one), please load an existing .ini file and save it ' 
+                'under a new name.',
                 QMessageBox.Ok)
             self.lineEdit_syscfgFileName.setEnabled(True)
             self.label_syscfgInput.setText(
@@ -204,7 +302,7 @@ class SaveConfigDlg(QDialog):
             success = False
             QMessageBox.warning(
                 self, 'Error',
-                'You cannot choose "default" for the user configuration or '
+                'You cannot choose "default" for the session configuration or '
                 '"system" for the system configuration.',
                 QMessageBox.Ok)
         # Check if files already exist
@@ -214,7 +312,7 @@ class SaveConfigDlg(QDialog):
                 success = False
                 QMessageBox.warning(
                     self, 'Error',
-                    'User configuration with that name already exists!',
+                    'Session configuration with that name already exists!',
                     QMessageBox.Ok)
             self.sysfile_name = self.lineEdit_syscfgFileName.text() + '.cfg'
             if self.new_syscfg and os.path.isfile(
@@ -231,8 +329,9 @@ class SaveConfigDlg(QDialog):
 # ------------------------------------------------------------------------------
 
 class SEMSettingsDlg(QDialog):
-    """SEM beam settings dialog window to adjust target EHT and target beam
-    current. The current actual beam settings and the current working distance
+    """SEM settings dialog window to adjust target EHT and target beam
+    current, aperture size, high current option, and detector selection.
+    The current actual beam settings and the current working distance
     and stigmation parameters are displayed.
     """
     def __init__(self, sem):
@@ -268,6 +367,16 @@ class SEMSettingsDlg(QDialog):
             '{0:.6f}'.format(sem.get_wd() * 1000))
         self.lineEdit_currentStigX.setText('{0:.6f}'.format(sem.get_stig_x()))
         self.lineEdit_currentStigY.setText('{0:.6f}'.format(sem.get_stig_y()))
+        # Show available detectors and set current detector
+        try:
+            available_detectors = self.sem.get_detector_list()
+            current_detector = self.sem.get_detector()
+            self.comboBox_detector.addItems(available_detectors)
+            if current_detector in available_detectors: 
+                self.comboBox_detector.setCurrentIndex(
+                    available_detectors.index(current_detector))
+        except NotImplementedError:
+            self.comboBox_detector.setEnabled(False)
 
     def accept(self):
         self.target_eht = self.doubleSpinBox_EHT.value()
@@ -285,6 +394,10 @@ class SEMSettingsDlg(QDialog):
         self.target_high_current = self.checkBox_highCurrent.isChecked()
         if self.target_high_current != self.actual_high_current:
             self.sem.set_high_current(self.target_high_current)
+
+        selected_detector = self.comboBox_detector.currentText()
+        if selected_detector:
+            self.sem.set_detector(selected_detector)
 
         super().accept()
 
@@ -706,16 +819,24 @@ class KatanaSettingsDlg(QDialog):
         self.show()
 
         # Set up COM port selector
-        self.comboBox_portSelector.addItems(utils.get_serial_ports())
-        self.comboBox_portSelector.setCurrentIndex(0)
+        available_ports = utils.get_serial_ports()
+        self.comboBox_portSelector.addItems(available_ports)
+        if self.microtome.selected_port in available_ports:
+            self.comboBox_portSelector.setCurrentIndex(
+                available_ports.index(self.microtome.selected_port))
+        else:
+            self.comboBox_portSelector.setCurrentIndex(0)
         self.comboBox_portSelector.currentIndexChanged.connect(
-            self.reconnect)
+            self.connect_to_new_com_port)
 
         self.display_connection_status()
         self.display_current_settings()
 
-    def reconnect(self):
-        pass
+    def connect_to_new_com_port(self):
+        """Attempt connection to new port."""
+        self.microtome.selected_port = self.comboBox_portSelector.currentText()
+        self.microtome.connect()
+        self.display_connection_status()
 
     def display_connection_status(self):
         # Show message in dialog whether or not katana is connected.
@@ -757,6 +878,7 @@ class KatanaSettingsDlg(QDialog):
             self.microtome.retract_clearance / 1000)
 
     def accept(self):
+        new_com_port = self.comboBox_portSelector.currentText()
         new_cut_speed = self.spinBox_knifeCutSpeed.value()
         new_fast_speed = self.spinBox_knifeFastSpeed.value()
         new_cut_start = self.spinBox_cutWindowStart.value()
@@ -768,6 +890,7 @@ class KatanaSettingsDlg(QDialog):
             self.doubleSpinBox_retractClearance.value() * 1000)
         # End position of cut window must be smaller than start position:
         if new_cut_end < new_cut_start:
+            self.microtome.selected_port = new_com_port
             self.microtome.knife_cut_speed = new_cut_speed
             self.microtome.knife_fast_speed = new_fast_speed
             self.microtome.cut_window_start = new_cut_start
@@ -874,6 +997,15 @@ class StageCalibrationDlg(QDialog):
         self.calc_exception = None
         self.busy = False
 
+        # Choose frame_size_selector depending on device: 
+        # About 2k x 2k is a good default choice
+        if self.sem.device_name.startswith("TESCAN"):
+            self.frame_size_selector = 5
+        elif sem.device_name.startswith("ZEISS"):
+            self.frame_size_selector = 2
+        else:  # Mock SEM
+            self.frame_size_selector = 1 
+
         loadUi('..\\gui\\stage_calibration_dlg.ui', self)
         self.setWindowModality(Qt.ApplicationModal)
         self.setWindowIcon(QIcon('..\\img\\icon_16px.ico'))
@@ -902,6 +1034,40 @@ class StageCalibrationDlg(QDialog):
             self.calculate_calibration_parameters_from_user_input)
         self.pushButton_measureMotorSpeeds.clicked.connect(
             self.measure_motor_speeds)
+        # Show current calibration image size and update whenever pixel size
+        # is changed by user
+        self.show_calibration_image_size()
+        self.spinBox_pixelsize.valueChanged.connect(self.show_calibration_image_size)
+         
+        # For now, disable motor speed section unless Gatan 3View is used
+        if self.stage.device_name() != "Gatan 3View":
+            self.doubleSpinBox_motorSpeedX.setEnabled(False)
+            self.doubleSpinBox_motorSpeedY.setEnabled(False)
+            self.pushButton_measureMotorSpeeds.setEnabled(False)
+
+    def calibration_image_size(self) -> Tuple[float, float]:
+        """Return the current size [width, height] of the calibration 
+        images in micrometres.
+        """
+        pixel_size = self.spinBox_pixelsize.value()
+        resolution = self.sem.STORE_RES[self.frame_size_selector]
+        width = resolution[0] * pixel_size / 1000
+        height = resolution[1] * pixel_size / 1000
+        return width, height
+
+    def show_calibration_image_size(self):
+        """Calculate and display the size of the calibration images."""
+        width, height = self.calibration_image_size()
+        self.label_imageSize.setText(f'{width:.1f} × {height:.1f}')
+
+    def stage_moves_within_image_size(self) -> bool:
+        """Check whether the specified X/Y move distances are within the
+        calibration image size (with a minimum of 10% overlap expected).
+        """
+        width, height = self.calibration_image_size()
+        move_distance = self.spinBox_shift.value()
+        return ((width - move_distance >= 0.1 * width) and 
+                (height - move_distance >= 0.1 * height))
 
     def measure_motor_speeds(self):
         """Run the measurement routine in a thread."""
@@ -973,6 +1139,15 @@ class StageCalibrationDlg(QDialog):
                 self, 'EHT off', 'EHT / high voltage is off. Please turn '
                 'it on before starting the calibration.', QMessageBox.Ok)
             return
+
+        if not self.stage_moves_within_image_size():
+            QMessageBox.warning(
+                self, 'X/Y move distance too large', 
+                'Ensure that the specified distance for X/Y moves '
+                'is smaller than the width and height of the calibration '
+                'images, so that at least 10% overlap is achieved.', QMessageBox.Ok)
+            return
+
         reply = QMessageBox.information(
             self, 'Start calibration procedure',
             'This will acquire three images and save them in the current base '
@@ -1002,14 +1177,9 @@ class StageCalibrationDlg(QDialog):
         shift = self.spinBox_shift.value()
         pixel_size = self.spinBox_pixelsize.value()
         dwell_time = self.sem.DWELL_TIME[self.comboBox_dwellTime.currentIndex()]
-        # Use frame size 4 if available, otherwise 3
-        if len(self.sem.STORE_RES) > 4:
-            frame_size_selector = 4
-        else:
-            frame_size_selector = 3
 
         self.sem.apply_frame_settings(
-            frame_size_selector, pixel_size, dwell_time)
+            self.frame_size_selector, pixel_size, dwell_time)
 
         start_x, start_y = self.stage.get_xy()
         # Acquire first image at starting position
@@ -1033,7 +1203,7 @@ class StageCalibrationDlg(QDialog):
         self.calc_exception = None
         try:
             # # [::-1] to use x, y, z order
-            if self.comboBox_package.currentIndex() == 0:  # alternative calculation selected
+            if self.comboBox_package.currentIndex() == 0:  # cv2 calculation selected
                 start_img = (start_img*255).astype(np.uint8)
                 shift_x_img = (shift_x_img*255).astype(np.uint8)
                 shift_y_img = (shift_y_img*255).astype(np.uint8)
@@ -1044,9 +1214,11 @@ class StageCalibrationDlg(QDialog):
                     start_img, shift_x_img, filter_pcorr=3)['tvec'][::-1]
                 y_shift = translation(
                     start_img, shift_y_img, filter_pcorr=3)['tvec'][::-1]
-            else:  # use skimage.register_translation
-                x_shift = register_translation(start_img, shift_x_img)[0][::-1]
-                y_shift = register_translation(start_img, shift_y_img)[0][::-1]
+            else:  # use skimage.phase_cross_correlation
+                x_shift = phase_cross_correlation(start_img, shift_x_img)[0][::-1]
+                y_shift = phase_cross_correlation(start_img, shift_y_img)[0][::-1]
+            x_shift = x_shift.astype(np.int)
+            y_shift = y_shift.astype(np.int)
             self.x_shift_vector = [x_shift[0], x_shift[1]]
             self.y_shift_vector = [y_shift[0], y_shift[1]]
         except Exception as e:
@@ -1108,42 +1280,29 @@ class StageCalibrationDlg(QDialog):
         # Rotation angles (in radians)
         rot_x = atan(delta_xy/delta_xx)
         rot_y = atan(delta_yx/delta_yy)
-        rot2_x = atan2(self.x_shift_vector[1], self.x_shift_vector[0])
-        rot2_y = atan2(self.y_shift_vector[0], self.y_shift_vector[1])
         # Scale factors
         scale_x = shift / (sqrt(delta_xx**2 + delta_xy**2) * pixel_size / 1000)
         scale_y = shift / (sqrt(delta_yx**2 + delta_yy**2) * pixel_size / 1000)
 
-        # alternative calc
+        # Alternative calc.
         x_abs = np.linalg.norm(self.x_shift_vector)
         y_abs = np.linalg.norm(self.y_shift_vector)
         # Rotation angles:
-        rot_x_alt2 = np.arccos(self.x_shift_vector[0] / x_abs)
-        rot_y_alt2 = np.arccos(self.y_shift_vector[1] / y_abs)
-        rot_x_alt = np.arctan2(self.x_shift_vector[1] / x_abs, self.x_shift_vector[0] / x_abs) - np.arctan2(0, 1)
-        rot_y_alt = np.arctan2(self.y_shift_vector[1] / y_abs, self.y_shift_vector[0] / y_abs) - np.arctan2(1, 0)
-
+        rot_x_alt = np.arccos(self.x_shift_vector[0] / x_abs)
+        rot_y_alt = np.arccos(self.y_shift_vector[1] / y_abs)
         # Scale factors:
         scale_x_alt = shift / (x_abs * pixel_size / 1000)
         scale_y_alt = shift / (y_abs * pixel_size / 1000)
 
-        # TODO: remove debugging:
-        # print(f'Original calc: {scale_x:.5f}\t{scale_y:.5f}\t{rot_x:.5f}\t{rot_y:.5f}')
-        # print(f'Alternative calc: {scale_x_alt:.5f}\t{scale_y_alt:.5f}\t{rot_x_alt:.5f}\t{rot_y_alt:.5f}')
-        # print(f'Super alternative calc: {rot_x_alt2:.5f}\t{rot_y_alt2:.5f}')
-        # print(f'Rotation (atan2): {rot2_x:.5f}\t{rot2_y:.5f}')
+        # Alternative calc. with atan2
+        # This only works if the reference vector is (0, 0)
+        rot2_x = atan2(self.x_shift_vector[1], self.x_shift_vector[0])
+        rot2_y = atan2(self.y_shift_vector[0], self.y_shift_vector[1])
 
-        if (self.comboBox_package.currentIndex() != 2
-            and self.sem.device_name not in ['ZEISS Merlin', 'ZEISS GeminiSEM']):
-            scale_x = scale_x_alt
-            scale_y = scale_y_alt
-            rot_x = rot_x_alt
-            rot_y = rot_y_alt
-
-        if self.sem.device_name == 'ZEISS Sigma':
-            # ZEISS Sigma
-            rot_x = rot_x_alt2
-            rot_y = rot_y_alt2
+        scale_x = scale_x_alt
+        scale_y = scale_y_alt
+        rot_x = rot_x_alt
+        rot_y = rot_y_alt
 
         self.busy = False
         user_choice = QMessageBox.information(
@@ -1179,16 +1338,10 @@ class StageCalibrationDlg(QDialog):
         y2y = self.spinBox_y2y.value()
 
         # Distances in pixels
-        if self.comboBox_package.currentIndex() != 2:
-            delta_xx = x2x - x1x
-            delta_xy = x2y - x1y
-            delta_yx = y2x - y1x
-            delta_yy = y2y - y1y
-        else:
-            delta_xx = abs(x1x - x2x)
-            delta_xy = abs(x1y - x2y)
-            delta_yx = abs(y1x - y2x)
-            delta_yy = abs(y1y - y2y)
+        delta_xx = x2x - x1x
+        delta_xy = x2y - x1y
+        delta_yx = y2x - y1x
+        delta_yy = y2y - y1y
         if delta_xx == 0 or delta_yy == 0:
             QMessageBox.warning(
                 self, 'Error computing stage calibration',
@@ -1211,15 +1364,17 @@ class StageCalibrationDlg(QDialog):
             # Save and apply new stage calibration and motor speeds
             self.cs.save_stage_calibration(self.sem.target_eht, stage_params)
             self.cs.apply_stage_calibration()
-            success = self.stage.set_motor_speeds(
-                self.doubleSpinBox_motorSpeedX.value(),
-                self.doubleSpinBox_motorSpeedY.value())
 
-            if not success:
-                QMessageBox.warning(
-                    self, 'Error updating motor speeds',
-                    'Motor speeds could not be updated.',
-                    QMessageBox.Ok)
+            if self.stage.device_name() == "Gatan 3View":
+                success = self.stage.set_motor_speeds(
+                    self.doubleSpinBox_motorSpeedX.value(),
+                    self.doubleSpinBox_motorSpeedY.value())
+                if not success:
+                    QMessageBox.warning(
+                        self, 'Error updating motor speeds',
+                        'Motor speeds could not be updated.',
+                        QMessageBox.Ok)
+
             super().accept()
 
     def reject(self):
@@ -1245,8 +1400,8 @@ class MagCalibrationDlg(QDialog):
         self.setWindowIcon(QIcon('..\\img\\icon_16px.ico'))
         self.setFixedSize(self.size())
         self.show()
-        self.spinBox_calibrationFactor.setValue(
-            self.sem.MAG_PX_SIZE_FACTOR)
+        self.lineEdit_calibrationFactor.setText(
+            str(self.sem.MAG_PX_SIZE_FACTOR))
         self.comboBox_frameWidth.addItems(['2048', '4096'])
         self.comboBox_frameWidth.setCurrentIndex(1)
         self.pushButton_calculate.clicked.connect(
@@ -1259,17 +1414,17 @@ class MagCalibrationDlg(QDialog):
         frame_width = int(str(self.comboBox_frameWidth.currentText()))
         pixel_size = self.doubleSpinBox_pixelSize.value()
         mag = self.spinBox_mag.value()
-        new_factor = mag * frame_width * pixel_size
+        new_factor = int(mag * frame_width * pixel_size)
         user_choice = QMessageBox.information(
             self, 'Calculated calibration factor',
             'Result:\nNew magnification calibration factor: %d '
             '\n\nDo you want to use this value?' % new_factor,
             QMessageBox.Ok | QMessageBox.Cancel)
         if user_choice == QMessageBox.Ok:
-            self.spinBox_calibrationFactor.setValue(new_factor)
+            self.lineEdit_calibrationFactor.setText(str(new_factor))
 
     def accept(self):
-        self.sem.MAG_PX_SIZE_FACTOR = self.spinBox_calibrationFactor.value()
+        self.sem.MAG_PX_SIZE_FACTOR = int(self.lineEdit_calibrationFactor.text())
         super().accept()
 
 # ------------------------------------------------------------------------------
@@ -1524,6 +1679,18 @@ class GridSettingsDlg(QDialog):
             self.reset_tile_previews)
         self.pushButton_resetFocusParams.clicked.connect(
             self.reset_wd_stig_params)
+            
+        # Buttons to set same stigmator value(s) for all tiles 
+        self.pushButton_globalStig.clicked.connect(
+            self.set_global_stig_xy)
+        # self.pushButton_globalStigY.clicked.connect(
+            # self.set_global_stig_xy)     
+            
+        # Modify working distances of all tiles by delta_wd
+        #delta_wd = self.doubleSpinBox_global_wd_shift.value()
+        self.pushButton_global_wd_shift.clicked.connect(
+           self.shift_wds)
+            
         # Save, add, and delete buttons
         self.pushButton_save.clicked.connect(self.save_current_settings)
         self.pushButton_addGrid.clicked.connect(self.add_grid)
@@ -1535,6 +1702,16 @@ class GridSettingsDlg(QDialog):
         # (should be done in MagC panel instead)
         if self.magc_mode:
             self.pushButton_addGrid.setEnabled(False)
+        if 'multisem' in self.sem.device_name.lower():
+            # in multisem ROIs are used instead of grids
+            # the smallest possible grid is kept for compatibility
+            self.spinBox_rows.setEnabled(False)
+            self.spinBox_rows.setValue(1)
+            self.spinBox_cols.setEnabled(False)
+            self.spinBox_cols.setValue(1)
+            self.comboBox_tileSize.setEnabled(False)
+            self.comboBox_tileSize.setCurrentIndex(0)
+            self.spinBox_shift.setEnabled(False)
 
     def update_active_status(self):
         # If current grid is inactive, disable GUI elements
@@ -1560,16 +1737,19 @@ class GridSettingsDlg(QDialog):
         current_frame_size_selector = self.sem.get_frame_size_selector()
         current_pixel_size = self.sem.get_pixel_size()
         current_scan_rate = self.sem.get_scan_rate()
+        #current_stig_x = self.sem.get_stig_x()
+        #current_stig_y = self.sem.get_stig_y()
         self.comboBox_tileSize.setCurrentIndex(current_frame_size_selector)
         self.comboBox_dwellTime.setCurrentIndex(current_scan_rate)
         self.doubleSpinBox_pixelSize.setValue(current_pixel_size)
+        #self.doubleSpinBox_globalStigX.setValue(current_stig_x)
+        #self.doubleSpinBox_globalStigY.setValue(current_stig_y)
 
     def show_current_settings(self):
         self.comboBox_colourSelector.setCurrentIndex(
             self.gm[self.current_grid].display_colour)
         self.checkBox_focusGradient.setChecked(
             self.gm[self.current_grid].use_wd_gradient)
-
         self.spinBox_rows.setValue(self.gm[self.current_grid].number_rows())
         self.spinBox_cols.setValue(self.gm[self.current_grid].number_cols())
         self.spinBox_overlap.setValue(self.gm[self.current_grid].overlap)
@@ -1587,6 +1767,23 @@ class GridSettingsDlg(QDialog):
             self.gm[self.current_grid].acq_interval)
         self.spinBox_acqIntervalOffset.setValue(
             self.gm[self.current_grid].acq_interval_offset)
+
+    def set_global_stig_xy(self):
+        sx = self.doubleSpinBox_globalStigX.value()
+        sy = self.doubleSpinBox_globalStigY.value()
+        self.gm[self.current_grid].set_stig_xy_for_all_tiles([sx, sy])
+        
+    # def set_global_stig_x(self):
+        # stig_x_val = 
+        
+    # def set_global_stig_y(self):
+        # stig_y_val = self.doubleSpinBox_currentStigY.setValue(self.sem.get_stig_y())
+        
+        
+    def shift_wds(self):
+        delta_wd = self.doubleSpinBox_global_wd_shift.value()
+        self.gm[self.current_grid].shift_wd_for_all_tiles(delta_wd)
+   
 
     def show_frame_size_and_dose(self):
         """Calculate and display the tile size and the dose for the current
@@ -1724,8 +1921,12 @@ class GridSettingsDlg(QDialog):
         else:
             error_msg = ('Overlap outside of allowed '
                          'range (-30% .. 30% frame width).')
+        # Get current centre of grid:
+        centre_dx, centre_dy = self.gm[self.current_grid].centre_dx_dy
+        # Set new angle
         self.gm[self.current_grid].rotation = (
             self.doubleSpinBox_rotation.value())
+        self.gm[self.current_grid].rotate_around_grid_centre(centre_dx, centre_dy)
         if 0 <= input_shift <= tile_width_p:
             self.gm[self.current_grid].row_shift = input_shift
         else:
@@ -1746,13 +1947,21 @@ class GridSettingsDlg(QDialog):
             self.spinBox_acqInterval.value())
         self.gm[self.current_grid].acq_interval_offset = (
             self.spinBox_acqIntervalOffset.value())
+            
+        # TG
+        self.gm[self.current_grid].global_stig_x = (
+            self.doubleSpinBox_globalStigX.value())  
+        self.gm[self.current_grid].global_stig_y = (
+            self.doubleSpinBox_globalStigY.value()) 
+            
+        ###
+        # Finally, recalculate tile positions
+        self.gm[self.current_grid].update_tile_positions()
+        self.gm[self.current_grid].auto_update_tile_positions = True
         if self.magc_mode:
             self.gm[self.current_grid].centre_sx_sy = prev_grid_centre
             self.gm.update_source_ROIs_from_grids()
-        # Finally, recalculate tile positions
-        self.gm[self.current_grid].update_tile_positions()
         # Restore default behaviour for updating tile positions
-        self.gm[self.current_grid].auto_update_tile_positions = True
         if error_msg:
             QMessageBox.warning(self, 'Error', error_msg, QMessageBox.Ok)
         else:
@@ -1885,7 +2094,11 @@ class AcqSettingsDlg(QDialog):
         super().__init__()
         self.acq = acquisition
         self.notifications = notifications
-        loadUi('..\\gui\\acq_settings_dlg.ui', self)
+        if not isinstance(self.acq.sem, SEM_Mock):
+            loadUi('..\\gui\\acq_settings_dlg.ui', self)
+        else:
+            loadUi('..\\gui\\acq_settings_dlg_mock.ui', self)
+            self.update_mock_settings()
         self.setWindowModality(Qt.ApplicationModal)
         self.setWindowIcon(QIcon('..\\img\\icon_16px.ico'))
         self.setFixedSize(self.size())
@@ -1899,9 +2112,9 @@ class AcqSettingsDlg(QDialog):
         self.update_stack_name()
         self.new_base_dir = ''
         self.spinBox_sliceThickness.setValue(self.acq.slice_thickness)
-        self.spinBox_numberSlices.setValue(self.acq.number_slices)
+        self.update_target_settings()
         self.spinBox_sliceCounter.setValue(self.acq.slice_counter)
-        self.doubleSpinBox_zDiff.setValue(self.acq.total_z_diff)
+        self.doubleSpinBox_totalZDiff.setValue(self.acq.total_z_diff)
         self.checkBox_sendMetaData.setChecked(self.acq.send_metadata)
         self.update_server_lineedit()
         self.checkBox_sendMetaData.stateChanged.connect(
@@ -1915,7 +2128,7 @@ class AcqSettingsDlg(QDialog):
         # Disable two spinboxes when SEM stage used
         if not use_microtome:
             self.spinBox_sliceThickness.setEnabled(False)
-            self.doubleSpinBox_zDiff.setEnabled(False)
+            self.doubleSpinBox_totalZDiff.setEnabled(False)
 
     def select_directory(self):
         """Let user select the base directory for the stack acquisition.
@@ -1932,6 +2145,14 @@ class AcqSettingsDlg(QDialog):
                 start_path,
                 QFileDialog.ShowDirsOnly)).replace('/', '\\'))
 
+    def select_mock_directory(self):
+        """Let user select a previous acquisition directory to use for mock SEM images."""
+        self.lineEdit_mockDir.setText(
+            str(QFileDialog.getExistingDirectory(
+                self, 'Select Directory',
+                'C:\\',
+                QFileDialog.ShowDirsOnly)).replace('/', '\\'))
+
     def update_server_lineedit(self):
         self.lineEdit_projectName.setEnabled(
             self.checkBox_sendMetaData.isChecked())
@@ -1939,6 +2160,80 @@ class AcqSettingsDlg(QDialog):
     def update_stack_name(self):
         base_dir = self.lineEdit_baseDir.text().rstrip(r'\/ ')
         self.label_stackName.setText(base_dir[base_dir.rfind('\\') + 1:])
+
+    def update_target_settings(self):
+        if self.acq.use_target_z_diff:
+            self.comboBox_targetType.setCurrentIndex(1)
+            self.doubleSpinBox_targetZDiff.setValue(self.acq.target_z_diff)
+            self.update_number_slices()
+            self.spinBox_numberSlices.hide()
+        else:
+            self.comboBox_targetType.setCurrentIndex(0)
+            self.spinBox_numberSlices.setValue(self.acq.number_slices)
+            self.update_target_z_diff()
+            self.doubleSpinBox_targetZDiff.hide()
+        self.comboBox_targetType.currentIndexChanged.connect(self.switch_target_spinbox)
+
+    def update_mock_settings(self):
+        self.pushButton_selectMockDir.clicked.connect(self.select_mock_directory)
+        self.pushButton_selectMockDir.setIcon(QIcon('..\\img\\selectdir.png'))
+        self.pushButton_selectMockDir.setIconSize(QSize(16, 16))
+        if self.acq.sem.previous_acq_dir is not None:
+            self.lineEdit_mockDir.setText(self.acq.sem.previous_acq_dir)
+        if self.acq.sem.mock_type == "noise":
+            self.comboBox_mockType.setCurrentIndex(0)
+        else:
+            self.comboBox_mockType.setCurrentIndex(1)
+
+    def update_target_z_diff(self):
+        if self.slices_valid(self.acq.slice_counter, self.acq.number_slices):
+            self.doubleSpinBox_targetZDiff.setValue(self.calculate_target_z_diff_from_number_slices())
+        else:
+            # If the slice values are invalid, just set the target z diff to the current total z diff
+            self.doubleSpinBox_targetZDiff.setValue(self.acq.total_z_diff)
+
+    def update_number_slices(self):
+        if self.z_diff_valid(self.acq.target_z_diff, self.acq.total_z_diff):
+            self.spinBox_numberSlices.setValue(self.calculate_number_slices_from_target_z_diff())
+        else:
+            # If Z diff values are invalid, just set the target number of slices to the current slice number
+            self.spinBox_numberSlices.setValue(self.acq.slice_counter)
+
+    def switch_target_spinbox(self):
+        """ When target number of slices is used, a QSpinbox with integer steps is used.
+        When target z diff is used, a QDoubleSpinbox with fractional steps is used.
+        """
+        slice_spin_box = self.spinBox_numberSlices
+        depth_spin_box = self.doubleSpinBox_targetZDiff
+        slice_spin_box.setVisible(not slice_spin_box.isVisible())
+        depth_spin_box.setVisible(not depth_spin_box.isVisible())
+
+    def calculate_number_slices_from_target_z_diff(self):
+        z_to_cut_in_nanometer = round(
+            (self.doubleSpinBox_targetZDiff.value() - self.doubleSpinBox_totalZDiff.value())*1000)
+        # always rounds down to nearest whole slice, as we don't want to exceed the target depth
+        n_slices_to_cut = math.floor(z_to_cut_in_nanometer/self.acq.slice_thickness)
+        total_n_slices = n_slices_to_cut + self.spinBox_sliceCounter.value()
+
+        return total_n_slices
+
+    def calculate_target_z_diff_from_number_slices(self):
+        # giving number_slices as 0, means just image current surface, so target z is same as total z
+        if self.acq.number_slices == 0:
+            return self.acq.total_z_diff
+        else:
+            n_slices = self.acq.number_slices - self.acq.slice_counter
+            slice_thickness_microns = self.acq.slice_thickness / 1000
+            target_z_diff = self.acq.total_z_diff + (n_slices * slice_thickness_microns)
+
+            return target_z_diff
+
+    def slices_valid(self, slice_counter, number_slices):
+        return slice_counter <= number_slices or number_slices == 0
+
+    def z_diff_valid(self, target_z_diff, total_z_diff):
+        # target must be high enough to allow at least one slice to be taken
+        return target_z_diff >= (total_z_diff + self.acq.slice_thickness/1000)
 
     def accept(self):
         success = True
@@ -1980,17 +2275,47 @@ class AcqSettingsDlg(QDialog):
                     'The selected base directory is invalid or '
                     'inaccessible: ' + str(e),
                     QMessageBox.Ok)
+        if isinstance(self.acq.sem, SEM_Mock):
+            if self.comboBox_mockType.currentIndex() == 0:
+                self.acq.sem.mock_type = "noise"
+            else:
+                self.acq.sem.mock_type = "previous_acquisition"
+                mock_dir = self.lineEdit_mockDir.text()
+                if os.path.exists(mock_dir) and os.path.isdir(mock_dir):
+                    self.acq.sem.previous_acq_dir = mock_dir
+                else:
+                    success = False
+                    QMessageBox.warning(
+                        self, 'Error',
+                        'The selected mock path does not exist, or is not a directory.',
+                        QMessageBox.Ok)
+
         min_slice_thickness = 5
         if self.acq.syscfg['device']['microtome'] == '6':
             min_slice_thickness = 0
         if min_slice_thickness <= self.spinBox_sliceThickness.value() <= 200:
             self.acq.slice_thickness = self.spinBox_sliceThickness.value()
+
         number_slices = self.spinBox_numberSlices.value()
+        target_z_diff = self.doubleSpinBox_targetZDiff.value()
+        total_z_diff = self.doubleSpinBox_totalZDiff.value()
+        slice_counter = self.spinBox_sliceCounter.value()
+
+        # 0 index is target number of slices, 1 index is target z depth
+        self.acq.use_target_z_diff = self.comboBox_targetType.currentIndex() == 1
+        if not self.acq.use_target_z_diff and self.slices_valid(slice_counter, number_slices):
+            # Keep target z difference in sync, for readability of config file
+            target_z_diff = self.calculate_target_z_diff_from_number_slices()
+            self.acq.slice_counter = slice_counter
+            self.acq.total_z_diff = total_z_diff
+        elif self.acq.use_target_z_diff and self.z_diff_valid(target_z_diff, total_z_diff):
+            # Keep number of slices in sync, for readability of config file
+            number_slices = self.calculate_number_slices_from_target_z_diff()
+            self.acq.slice_counter = slice_counter
+            self.acq.total_z_diff = total_z_diff
         self.acq.number_slices = number_slices
-        if (self.spinBox_sliceCounter.value() <= number_slices
-            or number_slices == 0):
-            self.acq.slice_counter = self.spinBox_sliceCounter.value()
-        self.acq.total_z_diff = self.doubleSpinBox_zDiff.value()
+        self.acq.target_z_diff = target_z_diff
+
         self.acq.eht_off_after_stack = self.checkBox_EHTOff.isChecked()
         self.acq.send_metadata = self.checkBox_sendMetaData.isChecked()
         if self.checkBox_sendMetaData.isChecked():
@@ -2002,16 +2327,23 @@ class AcqSettingsDlg(QDialog):
                     'system configuration file.',
                     QMessageBox.Ok)
             self.acq.metadata_project_name = self.lineEdit_projectName.text()
-        if ((number_slices > 0)
-            and (self.spinBox_sliceCounter.value() > number_slices)):
-            QMessageBox.warning(
-                self, 'Error',
-                'Slice counter must be smaller than or equal to '
-                'target number of slices.', QMessageBox.Ok)
-            success = False
+        if self.acq.use_target_z_diff and not self.z_diff_valid(target_z_diff, total_z_diff):
+                QMessageBox.warning(
+                    self, 'Error',
+                    'Target Z depth must be larger than or equal to ' +
+                    chr(8710) + 'Z + the current slice thickness', QMessageBox.Ok)
+                success = False
+        elif not self.acq.use_target_z_diff and not self.slices_valid(slice_counter, number_slices):
+                QMessageBox.warning(
+                    self, 'Error',
+                    'Slice counter must be smaller than or equal to '
+                    'target number of slices.', QMessageBox.Ok)
+                success = False
         if success:
             self.acq.base_dir = modified_dir
-            if self.acq.number_slices > self.acq.slice_counter:
+            if not self.acq.use_target_z_diff and self.acq.number_slices > self.acq.slice_counter:
+                self.acq.stack_completed = False
+            elif self.acq.use_target_z_diff and self.z_diff_valid(self.acq.target_z_diff, self.acq.total_z_diff):
                 self.acq.stack_completed = False
             super().accept()
 
@@ -2067,6 +2399,9 @@ class PreStackDlg(QDialog):
             elif autofocus.method == 1:
                 self.label_autofocusActive.setFont(boldFont)
                 self.label_autofocusActive.setText('Active (heuristic)')
+            if autofocus.method == 3:
+                self.label_autofocusActive.setFont(boldFont)
+                self.label_autofocusActive.setText('Active (MAPFoSt)')
         else:
             self.label_autofocusActive.setText('Inactive')
         if self.gm.wd_gradient_active():
@@ -2269,8 +2604,8 @@ class ExportDlg(QDialog):
                 imagelist_str.extend(f.readlines())
         if len(imagelist_str) > 0:
             # split strings, store entries in variables, find minimum x and y
-            min_x = 1000000
-            min_y = 1000000
+            min_x = 10000000
+            min_y = 10000000
             for line in imagelist_str:
                 elements = line.split(';')
                 # elements[0]: relative path to tile image
@@ -2794,7 +3129,8 @@ class AutofocusSettingsDlg(QDialog):
             self.autofocus.max_stig_y_diff)
         self.comboBox_trackingMode.addItems(['Track selected, approx. others',
                                              'Track all active tiles',
-                                             'Average over selected'])
+                                             'Average over selected',
+                                             'Track selected, fit others (global)'])
         self.comboBox_trackingMode.setCurrentIndex(
             self.autofocus.tracking_mode)
         self.comboBox_trackingMode.currentIndexChanged.connect(
@@ -2803,6 +3139,8 @@ class AutofocusSettingsDlg(QDialog):
         self.spinBox_interval.setValue(self.autofocus.interval)
         self.spinBox_autostigDelay.setValue(self.autofocus.autostig_delay)
         self.doubleSpinBox_pixelSize.setValue(self.autofocus.pixel_size)
+        if self.autofocus.mapfost_large_aberrations:
+            self.radioButton_mapfost_largeaberr.setChecked(True)
         # For heuristic autofocus:
         self.doubleSpinBox_wdDiff.setValue(
             self.autofocus.wd_delta * 1000000)
@@ -2818,10 +3156,12 @@ class AutofocusSettingsDlg(QDialog):
             self.autofocus.heuristic_calibration[2])
         self.doubleSpinBox_stigRot.setValue(self.autofocus.rot_angle)
         self.doubleSpinBox_stigScale.setValue(self.autofocus.scale_factor)
+
         # Disable some settings if MagC mode is active
         if magc_mode:
             self.radioButton_useHeuristic.setEnabled(False)
             self.radioButton_useTrackingOnly.setEnabled(False)
+            self.radioButton_useMAPFoSt.setEnabled(False)
             self.comboBox_trackingMode.setEnabled(False)
             self.spinBox_interval.setEnabled(False)
             # make autostig interval work on grids instead of slices
@@ -2881,7 +3221,7 @@ class AutofocusSettingsDlg(QDialog):
             self.autofocus.method = 1
         elif self.radioButton_useTrackingOnly.isChecked():
             self.autofocus.method = 2
-        elif self.radioButton_useTrackingOnly.isChecked():
+        elif self.radioButton_useMAPFoSt.isChecked():
             self.autofocus.method = 3
 
         success, tile_list = utils.validate_tile_list(
@@ -2904,12 +3244,14 @@ class AutofocusSettingsDlg(QDialog):
         self.autofocus.wd_delta = self.doubleSpinBox_wdDiff.value() / 1000000
         self.autofocus.stig_x_delta = self.doubleSpinBox_stigXDiff.value()
         self.autofocus.stig_y_delta = self.doubleSpinBox_stigYDiff.value()
+
         self.autofocus.heuristic_calibration = [
             self.doubleSpinBox_focusCalib.value(),
             self.doubleSpinBox_stigXCalib.value(),
             self.doubleSpinBox_stigYCalib.value()]
         self.autofocus.rot_angle = self.doubleSpinBox_stigRot.value()
         self.autofocus.scale_factor = self.doubleSpinBox_stigScale.value()
+        self.autofocus.mapfost_large_aberrations = self.radioButton_mapfost_largeaberr.isChecked()
         if not error_str:
             super().accept()
         else:
@@ -2929,8 +3271,9 @@ class RunAutofocusDlg(QDialog):
         self.use_autostig = False
         self.finish_trigger = utils.Trigger()
         self.finish_trigger.signal.connect(self.autofocus_completed)
-        self.new_wd_stig_xy = None, None, None
+        self.new_wd_stig = None, None, None
         self.busy = False
+        self.af_msg = None
 
         loadUi('..\\gui\\run_autofocus_dlg.ui', self)
         self.setWindowModality(Qt.ApplicationModal)
@@ -2945,16 +3288,19 @@ class RunAutofocusDlg(QDialog):
         self.comboBox_mode.setCurrentIndex(0)
 
         self.pushButton_run.clicked.connect(self.run_autofocus)
+        self.pushButton_calibrate.clicked.connect(self.calibrate_af)
 
     def run_autofocus(self):
+        self.busy = True
+        self.pushButton_run.setText('Busy... please wait')
+        self.pushButton_run.setEnabled(False)
         method = self.comboBox_method.currentIndex()
         mode = self.comboBox_mode.currentIndex()
+        self.large_aberr = self.radioButton_large_aberr.isChecked()
         if method == 1:
-            # MAPFoSt disabled for now
-            QMessageBox.information(
-                self, 'MAPFoSt',
-                'MAPFoSt Autofocus not available yet.',
-                QMessageBox.Ok)
+            self.aberr_mode_bools = [mode<2, mode==0 or mode==2, mode==0 or mode==2]
+            utils.run_log_thread(self.call_mapfost_af_routine)
+
         elif method == 0:
             if mode == 0:
                 self.use_autofocus = True
@@ -2965,14 +3311,14 @@ class RunAutofocusDlg(QDialog):
             else:
                 self.use_autofocus = False
                 self.use_autostig = True
-
-            self.pushButton_run.setText('Busy... please wait')
-            self.pushButton_run.setEnabled(False)
             utils.run_log_thread(self.call_zeiss_af_routine)
 
+    def call_mapfost_af_routine(self):
+        self.af_msg = self.autofocus.run_mapfost_af(self.aberr_mode_bools, self.large_aberr)
+        self.finish_trigger.signal.emit()
+
     def call_zeiss_af_routine(self):
-        self.busy = True
-        self.zeiss_af_msg = self.autofocus.run_zeiss_af(
+        self.af_msg = self.autofocus.run_zeiss_af(
             self.use_autofocus, self.use_autostig)
         self.finish_trigger.signal.emit()
 
@@ -2980,13 +3326,13 @@ class RunAutofocusDlg(QDialog):
         self.busy = False
         self.pushButton_run.setText('Run')
         self.pushButton_run.setEnabled(True)
-        if 'ERROR' in self.zeiss_af_msg:
+        if 'ERROR' in self.af_msg:
             self.new_wd_stig = None, None, None
             QMessageBox.warning(
                 self, 'SmartSEM Autofocus error',
                 'An error occurred while running the SmartSEM Autofocus',
                 QMessageBox.Ok)
-            utils.log_error('SEM', self.zeiss_af_msg)
+            utils.log_error('SEM', self.af_msg)
         else:
             self.new_wd_stig = self.sem.get_wd(), *self.sem.get_stig_xy()
             QMessageBox.information(
@@ -2994,8 +3340,49 @@ class RunAutofocusDlg(QDialog):
                 f'New working distance and stigmation:\n'
                 f'{utils.format_wd_stig(*self.new_wd_stig)}',
                 QMessageBox.Ok)
-            utils.log_info('SEM', self.zeiss_af_msg)
+            utils.log_info('SEM', self.af_msg)
             self.accept()
+
+
+    def calibrate_af(self):
+        method = self.comboBox_method.currentIndex()
+        if method == 0 :
+            QMessageBox.information(
+                self, 'SmartSEM AF',
+                'calibration not available',
+                QMessageBox.Ok)
+        elif method ==1:
+            self.pushButton_calibrate.setText('Busy... please wait')
+            self.pushButton_calibrate.setEnabled(False)
+            self.busy = True
+            QMessageBox.question(
+                self, 'Defocus calibration.','Defocus calibration \n Please make sure the SEM is well focused. \n Click OK to proceed.',
+                QMessageBox.Ok)
+            msg = self.autofocus.calibrate_mapfost_af(calib_mode="defocus")
+
+            user_reply = QMessageBox.question(
+                self, 'Defocus calibration','Probe convergence angle is ' + str(msg) + "\n" + "Please update the ini file." + "\n" +
+                                            "Click Ok to proceed with Astig calibration"
+                , QMessageBox.Ok| QMessageBox.Cancel)
+
+            utils.log_info('SEM ', 'The probe convergence angle is ' + str(msg))
+            self.accept()
+
+            if user_reply == QMessageBox.Ok:
+                user_reply = QMessageBox.question(
+                    self, 'Astig calibration.',' Astig Calibration \n Please make sure the SEM is well focused. \n Click OK to proceed.',
+                    QMessageBox.Ok | QMessageBox.Cancel)
+                if user_reply == QMessageBox.Ok:
+                    msg = self.autofocus.calibrate_mapfost_af(calib_mode="astig")
+                    QMessageBox.question(
+                        self, 'Astig calibration.', 'The astig rotation (deg) is ' + str(msg[0]) + "\n" +
+                                                    'The astig scaling is ' + str(msg[1]) +
+                                                    " \n Calibration complete. Please update the ini file", QMessageBox.Ok)
+                    utils.log_info('SEM' , "Astig Rotation and Scaling : " + str(msg))
+                self.accept()
+                self.af_msg = "Calibration complete. Please update the ini file"
+                self.new_wd_stig = self.sem.get_wd(), *self.sem.get_stig_xy()
+                self.finish_trigger.signal.emit()
 
     def reject(self):
         if not self.busy:
@@ -3540,6 +3927,9 @@ class GrabFrameDlg(QDialog):
         self.comboBox_frameSize.addItems(store_res_list)
         self.comboBox_frameSize.setCurrentIndex(
             self.sem.grab_frame_size_selector)
+        # no frame size selection with the MultiSEM
+        if self.sem.device_name == 'MultiSEM':
+            self.comboBox_frameSize.setEnabled(False)
         self.doubleSpinBox_pixelSize.setValue(self.sem.grab_pixel_size)
         self.comboBox_dwellTime.addItems(map(str, self.sem.DWELL_TIME))
         self.comboBox_dwellTime.setCurrentIndex(
@@ -3739,6 +4129,13 @@ class FTSetParamsDlg(QDialog):
             self.doubleSpinBox_currentStigY.setValue(current_stig_y)
         else:
             self.doubleSpinBox_currentStigY.setValue(0)
+        
+        self.pushButton_set_deltaWD.clicked.connect(self.shift_wd_tile)
+        self.pushButton_set_deltaStigX.clicked.connect(self.shift_stig_x_tile)
+        self.pushButton_set_deltaStigY.clicked.connect(self.shift_stig_y_tile)
+        self.pushButton_set_deltaWD_inverted.clicked.connect(self.invert_delta_wd)
+        self.pushButton_set_deltaStigX_inverted.clicked.connect(self.invert_delta_stig_x)
+        self.pushButton_set_deltaStigY_inverted.clicked.connect(self.invert_delta_stig_y)
 
     def get_from_sem(self):
         self.doubleSpinBox_currentFocus.setValue(1000 * self.sem.get_wd())
@@ -3755,18 +4152,48 @@ class FTSetParamsDlg(QDialog):
         self.new_stig_x = self.doubleSpinBox_currentStigX.value()
         self.new_stig_y = self.doubleSpinBox_currentStigY.value()
         super().accept()
+        
+    def shift_wd_tile(self):
+        delta_wd_tile = self.doubleSpinBox_deltaWD.value()
+        current_wd = self.doubleSpinBox_currentFocus.value()
+        self.doubleSpinBox_currentFocus.setValue(current_wd + delta_wd_tile/1000.0)
+        
+    def invert_delta_wd(self):
+        delta_wd_tile = self.doubleSpinBox_deltaWD.value()
+        self.doubleSpinBox_deltaWD.setValue(-delta_wd_tile)
+        
+    def shift_stig_x_tile(self):
+        delta_stig_x = self.doubleSpinBox_deltaStigX.value()
+        current_stig_x = self.doubleSpinBox_currentStigX.value()
+        self.doubleSpinBox_currentStigX.setValue(current_stig_x + delta_stig_x)
 
+    def invert_delta_stig_x(self):
+        delta_stig_x = self.doubleSpinBox_deltaStigX.value()
+        self.doubleSpinBox_deltaStigX.setValue(-delta_stig_x)    
+                
+    def shift_stig_y_tile(self):
+        delta_stig_y = self.doubleSpinBox_deltaStigY.value()
+        current_stig_y = self.doubleSpinBox_currentStigY.value()
+        self.doubleSpinBox_currentStigY.setValue(current_stig_y + delta_stig_y)
+ 
+    def invert_delta_stig_y(self):
+        delta_stig_y = self.doubleSpinBox_deltaStigY.value()
+        self.doubleSpinBox_deltaStigY.setValue(-delta_stig_y) 
+       
+    
+    
+    
 # ------------------------------------------------------------------------------
 
 class FTMoveDlg(QDialog):
     """Move the stage to the selected tile or OV position."""
 
-    def __init__(self, microtome, coordinate_system, grid_manager,
+    def __init__(self, stage, grid_manager, ov_manager,
                  grid_index, tile_index, ov_index):
         super().__init__()
-        self.microtome = microtome
-        self.cs = coordinate_system
+        self.stage = stage
         self.gm = grid_manager
+        self.ovm = ov_manager
         self.ov_index = ov_index
         self.grid_index = grid_index
         self.tile_index = tile_index
@@ -3798,10 +4225,10 @@ class FTMoveDlg(QDialog):
         elif self.tile_index >= 0:
             stage_x, stage_y = self.gm[self.grid_index][self.tile_index].sx_sy
         # Now move the stage
-        self.microtome.move_stage_to_xy((stage_x, stage_y))
-        if self.microtome.error_state != Error.none:
+        self.stage.move_to_xy((stage_x, stage_y))
+        if self.stage.error_state != Error.none:
             self.error = True
-            self.microtome.reset_error_state()
+            self.stage.reset_error_state()
         # Signal that move complete
         self.finish_trigger.signal.emit()
 

@@ -429,7 +429,14 @@ class Notifications:
         return self.metadata_post_request(
            '/project/' + project_name
             + '/stack/' + stack_name
-            + '/tile/metadata/update', tile_metadata)
+            + '/tile/completed', tile_metadata)
+
+    def send_ov_metadata(self, project_name, stack_name, ov_metadata):
+        """Send overview metadata after each overview acquisition."""
+        return self.metadata_post_request(
+           '/project/' + project_name
+            + '/stack/' + stack_name
+            + '/ov/completed', ov_metadata)
 
     def read_server_message(self, project_name, stack_name):
         """Read a message from the metadata server."""

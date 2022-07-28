@@ -25,6 +25,7 @@ import os
 import json
 from PyQt5.QtGui import QPixmap, QPainter, QColor
 
+import numpy as np
 import utils
 from grid_manager import Grid
 
@@ -35,6 +36,10 @@ class Overview(Grid):
                  pixel_size, dwell_time, dwell_time_selector, acq_interval,
                  acq_interval_offset, wd_stig_xy, vp_file_path,
                  debris_detection_area):
+
+        # Use default OV frame size selector if selector not specified
+        if frame_size_selector is None:
+            frame_size_selector = sem.STORE_RES_DEFAULT_INDEX_OV
 
         # Initialize the overview as a 1x1 grid
         super().__init__(coordinate_system, sem,
@@ -61,7 +66,7 @@ class Overview(Grid):
 
     @centre_sx_sy.setter
     def centre_sx_sy(self, sx_sy):
-        self._origin_sx_sy = list(sx_sy)
+        self._origin_sx_sy = np.array(sx_sy)
 
     @property
     def centre_dx_dy(self):
@@ -192,16 +197,22 @@ class StubOverview(Grid):
                          active=True, origin_sx_sy=[0, 0],
                          rotation=0, size=grid_size,
                          overlap=overlap, row_shift=0, active_tiles=[],
-                         frame_size=[], frame_size_selector=frame_size_selector,
-                         pixel_size=pixel_size, dwell_time=0.8,
+                         frame_size=None, frame_size_selector=frame_size_selector,
+                         pixel_size=pixel_size, dwell_time=None,
                          dwell_time_selector=dwell_time_selector,
                          display_colour=11)
 
         # Set the centre coordinates, which will update the origin.
         self.centre_sx_sy = centre_sx_sy
-        self.image = None
-        # Image is loaded when file path is set/changed.
+        # QPixmaps of current stub OV (original and downsampled)
+        self.pixmaps_ = {1: None, 2: None, 4: None, 8: None, 16: None}
+        # QPixmaps are loaded when file path is set/changed.
         self.vp_file_path = vp_file_path
+
+    def image(self, mag=1):
+        if mag in [1, 2, 4, 8, 16]:
+            return self.pixmaps_[mag]
+        return None
 
     @property
     def vp_file_path(self):
@@ -210,17 +221,21 @@ class StubOverview(Grid):
     @vp_file_path.setter
     def vp_file_path(self, file_path):
         self._vp_file_path = file_path
-        # Load image as QPixmap
-        if os.path.isfile(self._vp_file_path):
-            try:
-                self.image = QPixmap(self._vp_file_path)
-            except:
-                self.image = None
+        # Load images as QPixmaps:
+        # Full resolution  
+        if os.path.isfile(file_path):
+            self.pixmaps_[1] = QPixmap(file_path)
         else:
-            self.image = None
+            self.pixmaps_[1] = None
+        # Downsampled 
+        for mag in [2, 4, 8, 16]:
+            vp_file_path_mag = file_path[:-4] + f'_mag{mag}.png'
+            if os.path.isfile(vp_file_path_mag): 
+                self.pixmaps_[mag] = QPixmap(vp_file_path_mag)
+            else:
+                self.pixmaps_[mag] = None
 
 class OverviewManager:
-
     def __init__(self, config, sem, coordinate_system):
         self.cfg = config
         self.sem = sem
@@ -228,7 +243,7 @@ class OverviewManager:
         self.template_ov_index = 0
         self.number_ov = int(self.cfg['overviews']['number_ov'])
 
-        # Load OV parameters from user configuration
+        # Load OV parameters from session configuration
         ov_active = json.loads(self.cfg['overviews']['ov_active'])
         ov_centre_sx_sy = json.loads(self.cfg['overviews']['ov_centre_sx_sy'])
         ov_rotation = json.loads(self.cfg['overviews']['ov_rotation'])
@@ -284,12 +299,18 @@ class OverviewManager:
             self.cfg['overviews']['stub_ov_centre_sx_sy'])
         stub_ov_grid_size = json.loads(
             self.cfg['overviews']['stub_ov_grid_size'])
-        stub_ov_overlap = int(self.cfg['overviews']['stub_ov_overlap'])
-        stub_ov_frame_size_selector = int(
-            self.cfg['overviews']['stub_ov_frame_size_selector'])
+        stub_ov_overlap = int(self.cfg['overviews']['stub_ov_overlap'])  
+        if self.cfg['overviews']['stub_ov_frame_size_selector'] == 'None':
+            stub_ov_frame_size_selector = self.sem.STORE_RES_DEFAULT_INDEX_STUB_OV
+        else:
+            stub_ov_frame_size_selector = int(
+                self.cfg['overviews']['stub_ov_frame_size_selector'])
         stub_ov_pixel_size = float(self.cfg['overviews']['stub_ov_pixel_size'])
-        stub_ov_dwell_time = int(
-            self.cfg['overviews']['stub_ov_dwell_time_selector'])
+        if self.cfg['overviews']['stub_ov_dwell_time_selector'] == 'None':
+            stub_ov_dwell_time_selector = self.sem.DWELL_TIME_DEFAULT_INDEX
+        else:
+            stub_ov_dwell_time_selector = int(
+                self.cfg['overviews']['stub_ov_dwell_time_selector'])
         stub_ov_file_path = (
             self.cfg['overviews']['stub_ov_viewport_image'])
 
@@ -299,7 +320,7 @@ class OverviewManager:
                                             stub_ov_overlap,
                                             stub_ov_frame_size_selector,
                                             stub_ov_pixel_size,
-                                            stub_ov_dwell_time,
+                                            stub_ov_dwell_time_selector,
                                             stub_ov_file_path)
 
     def __getitem__(self, ov_index):
@@ -423,6 +444,15 @@ class OverviewManager:
                               frame_size=ov.frame_size, frame_size_selector=ov.frame_size_selector,
                               dwell_time_selector=ov.dwell_time_selector, dwell_time=ov.dwell_time,
                               acq_interval=ov.acq_interval, acq_interval_offset=ov.acq_interval_offset)
+
+    def overview_position_for_registration(self, ov_index):
+        """Provide overview location (upper left corner of overview) in nanometres.
+        TODO: What is the best way to deal with overview rotations?
+        """
+        dx, dy = self.__overviews[ov_index].centre_dx_dy
+        width_d = self.__overviews[ov_index].width_d()
+        height_d = self.__overviews[ov_index].height_d()
+        return int((dx - width_d/2) * 1000), int((dy - height_d/2) * 1000)
 
     def total_number_active_overviews(self):
         """Return the total number of active overviews."""
