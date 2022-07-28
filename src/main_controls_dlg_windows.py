@@ -1947,14 +1947,14 @@ class GridSettingsDlg(QDialog):
             self.spinBox_acqInterval.value())
         self.gm[self.current_grid].acq_interval_offset = (
             self.spinBox_acqIntervalOffset.value())
-            
+
         # TG
         self.gm[self.current_grid].global_stig_x = (
             self.doubleSpinBox_globalStigX.value())  
         self.gm[self.current_grid].global_stig_y = (
-            self.doubleSpinBox_globalStigY.value()) 
-            
+            self.doubleSpinBox_globalStigY.value())            
         ###
+
         # Finally, recalculate tile positions
         self.gm[self.current_grid].update_tile_positions()
         self.gm[self.current_grid].auto_update_tile_positions = True
