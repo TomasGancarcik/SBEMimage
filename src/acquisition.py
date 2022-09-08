@@ -1921,7 +1921,7 @@ class Acquisition:
         # Otherwise wd_default, stig_x_default, and stig_y_default are used.
         adjust_wd_stig = (
             self.gm[grid_index].use_wd_gradient
-            or (self.use_autofocus and self.autofocus.tracking_mode < 2))
+            or (self.use_autofocus and self.autofocus.tracking_mode < 4))
         self.tile_wd, self.tile_stig_x, self.tile_stig_y = 0, 0, 0
 
         # The grid's acquisition settings will be applied before the first
