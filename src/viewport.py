@@ -95,6 +95,7 @@ class Viewport(QWidget):
         self._vp_initialize()  # Viewport
         self._sv_initialize()  # Slice-by-slice viewer
         self._m_initialize()   # Monitoring tab
+        self._m_initialize()   # Monitoring tab
         self.setMouseTracking(True)
 
         self.selected_template = False
