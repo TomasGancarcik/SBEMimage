@@ -3457,23 +3457,28 @@ class Viewport(QWidget):
     def sv_reset_view(self):
         """Zoom out completely and centre current image."""
         if self.sv_current_ov >= 0:
-            self.cs.sv_scale_ov = utils.SV_ZOOM_OV[0]
+            #self.cs.sv_scale_ov = utils.SV_ZOOM_OV[0]
             width, height = self.ovm[self.sv_current_ov].frame_size
             viewport_pixel_size = 1000 / self.cs.sv_scale_ov
             ov_pixel_size = self.ovm[self.sv_current_ov].pixel_size
             resize_ratio = ov_pixel_size / viewport_pixel_size
             new_vx = int(self.cs.vp_width // 2 - (width // 2) * resize_ratio)
             new_vy = int(self.cs.vp_height // 2 - (height // 2) * resize_ratio)
+            # Center the OV
+            self.cs.sv_ov_vx_vy = [new_vx, new_vy]
         elif self.sv_current_tile >= 0:
-            self.cs.sv_scale_tile = utils.SV_ZOOM_TILE[0]
+            #self.cs.sv_scale_tile = utils.SV_ZOOM_TILE[0]
             width, height = self.gm[self.sv_current_grid].frame_size
             viewport_pixel_size = 1000 / self.cs.sv_scale_tile
             tile_pixel_size = self.gm[self.sv_current_grid].pixel_size
             resize_ratio = tile_pixel_size / viewport_pixel_size
             new_vx = int(self.cs.vp_width // 2 - (width // 2) * resize_ratio)
             new_vy = int(self.cs.vp_height // 2 - (height // 2) * resize_ratio)
+            # Center the tile 
+            self.cs.sv_tile_vx_vy = [new_vx, new_vy]
+
         # Disable native resolution
-        self.sv_disable_native_resolution()
+        #self.sv_disable_native_resolution()
         self._sv_adjust_zoom_slider()
         self.sv_draw()
 
