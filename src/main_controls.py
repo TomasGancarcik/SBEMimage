@@ -1957,7 +1957,7 @@ class MainControls(QMainWindow):
             # is close to the end; otherwise, keep the scroll in the
             # current place
             verScrollBar = self.textarea_log.verticalScrollBar()
-            scrollIsAtEnd = ver.scrollBar.maximum() - verScrollBar.value() <=10
+            scrollIsAtEnd = verScrollBar.maximum() - verScrollBar.value() <=10
             if scrollIsAtEnd:
                 verScrollBar.setValue(verScrollBar.maximum()) # Scroll to the bottom
 
@@ -2878,6 +2878,8 @@ class MainControls(QMainWindow):
                                         dialog.new_stig_x,
                                         dialog.new_stig_y)
                 # Set SEM to new values unless WD == 0
+                # For focus while acquiring method, do not set sem working
+                # distance and xy stig
                 if self.ft_selected_wd != 0:
                     self.sem.set_wd(self.ft_selected_wd)
                     self.sem.set_stig_xy(
