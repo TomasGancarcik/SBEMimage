@@ -1953,7 +1953,13 @@ class MainControls(QMainWindow):
         else:
             # If msg is not a command, show it in log:
             self.textarea_log.appendPlainText(msg)
-            self.textarea_log.ensureCursorVisible()
+            # Scroll to bottom to show new line if the scroll
+            # is close to the end; otherwise, keep the scroll in the
+            # current place
+            verScrollBar = self.textarea_log.verticalScrollBar()
+            scrollIsAtEnd = ver.scrollBar.maximum() - verScrollBar.value() <=10
+            if scrollIsAtEnd:
+                verScrollBar.setValue(verScrollBar.maximum()) # Scroll to the bottom
 
     def add_tile_folder(self):
         """Add a folder for a new tile to be acquired while the acquisition
