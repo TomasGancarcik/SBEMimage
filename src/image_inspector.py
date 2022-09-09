@@ -379,7 +379,8 @@ class ImageInspector:
                 with open(stats_filename, 'a') as file:
                     file.write(str(slice_counter) + ';'
                                + str(self.ov_means[ov_index][-1]) + ';'
-                               + str(self.ov_stddevs[ov_index][-1]) + 
+                               + str(self.ov_stddevs[ov_index][-1])
+                               + '\n')
             except Exception as e:
                 success = False  # couldn't write to disk
                 error_msg = str(e)
