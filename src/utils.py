@@ -28,7 +28,7 @@ from logging.handlers import RotatingFileHandler
 from shapely.geometry import Polygon
 from shapely.geometry import Point
 from skimage.transform import ProjectiveTransform
-from skimage.measure import ransac
+from skimage.measure import ransac, blur_effect
 from serial.tools import list_ports
 from PyQt5.QtCore import QObject, pyqtSignal
 
