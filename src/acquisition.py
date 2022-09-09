@@ -1624,7 +1624,7 @@ class Acquisition:
             if os.path.isfile(ov_save_path):
 
                 # Inspect the acquired image
-                (ov_img, mean, stddev, sharpness,
+                (ov_img, mean, stddev,
                  range_test_passed,
                  load_error, load_exception, grab_incomplete) = (
                     self.img_inspector.process_ov(ov_save_path,
@@ -2379,7 +2379,7 @@ class Acquisition:
             # Check if image was saved and process it
             if os.path.isfile(save_path):
                 start_time = time()
-                (tile_img, mean, stddev, sharpness, 
+                (tile_img, mean, stddev,
                  range_test_passed, slice_by_slice_test_passed, tile_selected,
                  load_error, load_exception,
                  grab_incomplete, frozen_frame_error) = (
