@@ -84,7 +84,6 @@ class Autofocus():
         self.mapfost_stig_scale = json.loads(self.cfg['autofocus']['mapfost_astig_scaling'])
 
 
-
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
         autofocus reference tiles are managed in grid_manager.

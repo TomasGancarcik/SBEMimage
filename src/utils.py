@@ -28,9 +28,9 @@ from logging.handlers import RotatingFileHandler
 from shapely.geometry import Polygon
 from shapely.geometry import Point
 from skimage.transform import ProjectiveTransform
-from skimage.measure import ransac
 from serial.tools import list_ports
 from PyQt5.QtCore import QObject, pyqtSignal
+from skimage.measure import ransac
 
 
 # Default and minimum size of the Viewport canvas.
@@ -887,3 +887,8 @@ def barycenter(points):
     return x,y
 
 # -------------- End of MagC utils --------------
+
+def _sobel(data, kernel=5): #kernel = -1 ==Scharr
+    sobelx = cv2.Sobel(data,cv2.CV_64F,1,0,kernel)
+    sobely = cv2.Sobel(data,cv2.CV_64F,0,1,kernel)
+    return np.mean(cv2.magnitude(sobelx, sobely))
