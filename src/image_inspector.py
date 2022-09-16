@@ -43,11 +43,9 @@ class ImageInspector:
         self.gm = grid_manager
         self.tile_means = {}
         self.tile_stddevs = {}
-        self.tile_sharpnesses = {} # TODO: rename
         self.tile_reslice_line = {}
         self.ov_means = {}
         self.ov_stddevs = {}
-        self.ov_sharpnesses = {} # TODO: decide if to compute anything of OVs or skip
         self.ov_images = {}
         self.ov_reslice_line = {}
         self.prev_img_mean_stddev = [0, 0]
@@ -127,7 +125,7 @@ class ImageInspector:
         mean and stddev, and check if image appears incomplete.
         """
         img = None
-        mean, stddev, sharpness = 0, 0, 0
+        mean, stddev = 0, 0
         load_error = False
         load_exception = ''
         grab_incomplete = False
