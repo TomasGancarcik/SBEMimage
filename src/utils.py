@@ -19,7 +19,13 @@ import threading
 import math
 import cv2
 import numpy as np
+import glob
 
+from cv2 import Sobel
+from skimage.draw import disk
+from skimage import img_as_ubyte
+from skimage.io import imread, imsave
+from os.path import basename
 from enum import Enum
 from time import sleep
 from queue import Queue
@@ -887,3 +893,34 @@ def barycenter(points):
     return x,y
 
 # -------------- End of MagC utils --------------
+
+
+def sobel(data, kernel=3): #kernel = -1 ==Scharr
+    sobelx = Sobel(data,cv2.CV_64F,1,0,kernel)
+    sobely = Sobel(data,cv2.CV_64F,0,1,kernel)
+    return cv2.magnitude(sobelx, sobely)
+
+
+def create_mask(tile_size):
+    width, height = tile_size
+    center = (int(height / 2), int(width / 2))
+    radius = int(height / 3)
+    rr, cc = disk(center, radius)
+    mask = np.ones((height, width), dtype=bool)
+    mask[rr, cc] = False
+    return mask
+
+
+def save_mask(mask, filename):
+    try:
+        imsave(filename, img_as_ubyte(mask))
+    except:
+        print('Unable to save mask for image quality inspection.')
+
+
+def load_masks(path):
+    masks = {}
+    for fn in glob.glob(path + '\\mask_*.tif'):
+        key = str.split(basename(fn), '.')[0]
+        masks[key] = imread(fn)
+    return masks
