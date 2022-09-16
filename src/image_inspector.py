@@ -16,7 +16,8 @@ import json
 import psutil
 import numpy as np
 
-from time import sleep
+from skimage.io import imread
+from skimage.draw import disk
 from imageio import imwrite
 from scipy.signal import medfilt2d
 from collections import deque
@@ -25,9 +26,7 @@ from PIL.ImageQt import ImageQt
 from PyQt5.QtGui import QPixmap
 
 import utils
-
-from skimage.util import crop
-import cv2
+from utils import sobel
 
 # Remove image size limit in PIL (Pillow) to prevent DecompressionBombError
 Image.MAX_IMAGE_PIXELS = None
@@ -43,11 +42,10 @@ class ImageInspector:
         self.gm = grid_manager
         self.tile_means = {}
         self.tile_stddevs = {}
-        self.tile_sharpnesses = {} # TODO: rename
         self.tile_reslice_line = {}
+        self.tile_stats = {}
         self.ov_means = {}
         self.ov_stddevs = {}
-        self.ov_sharpnesses = {} # TODO: decide if to compute anything of OVs or skip
         self.ov_images = {}
         self.ov_reslice_line = {}
         self.prev_img_mean_stddev = [0, 0]
@@ -127,7 +125,7 @@ class ImageInspector:
         mean and stddev, and check if image appears incomplete.
         """
         img = None
-        mean, stddev, sharpness = 0, 0, 0
+        mean, stddev = 0, 0
         load_error = False
         load_exception = ''
         grab_incomplete = False
@@ -157,7 +155,7 @@ class ImageInspector:
         return img, mean, stddev, load_error, load_exception, grab_incomplete
 
 
-    def process_tile(self, filename, grid_index, tile_index, slice_counter):
+    def process_tile(self, filename, grid_index, tile_index, slice_counter, mask):
         range_test_passed, slice_by_slice_test_passed = False, False
         frozen_frame_error = False
         tile_selected = False
@@ -182,7 +180,9 @@ class ImageInspector:
         img, mean, stddev, load_error, load_exception, grab_incomplete = (
             self.load_and_inspect(filename))
 
-        if not load_error:
+        ma_mean, ma_stddev, ma_sharp, err, ex = (self.load_and_inspect_image_quality(filename, mask, masking=True))
+
+        if not (load_error and err):
 
             tile_key = ('g' + str(grid_index).zfill(utils.GRID_DIGITS)
                         + '_' + 't' + str(tile_index).zfill(utils.TILE_DIGITS))
@@ -226,11 +226,18 @@ class ImageInspector:
             # Add the newest
             self.tile_means[tile_key].append((slice_counter, mean))
 
+
             if not tile_key in self.tile_stddevs:
                 self.tile_stddevs[tile_key] = []
             if len(self.tile_stddevs[tile_key]) > 1:
                 self.tile_stddevs[tile_key].pop(0)
-            self.tile_stddevs[tile_key].append((slice_counter, stddev))          
+            self.tile_stddevs[tile_key].append((slice_counter, stddev))
+
+            if not tile_key in self.tile_stats:
+                self.tile_stats[tile_key] = []
+            if len(self.tile_stats[tile_key]) > 1:
+                self.tile_stats[tile_key].pop(0)
+            self.tile_stats[tile_key].append((slice_counter, ma_mean, ma_stddev, ma_sharp))
             
             if (tile_key_short in self.monitoring_tile_list
                 or 'all' in self.monitoring_tile_list):
@@ -268,6 +275,33 @@ class ImageInspector:
                 range_test_passed, slice_by_slice_test_passed, tile_selected,
                 load_error, load_exception, grab_incomplete, frozen_frame_error)
 
+
+    def load_and_inspect_image_quality(self, filename, mask, masking=True):
+        """Load filename with error handling and calculate image statistics.
+        if masking==True, compute only on centered circular crop region of the image.
+        """
+        img = None
+        ma_mean, ma_stddev, ma_sharp = 0, 0, 0
+        load_error = False
+        load_exception = ''
+
+        try:
+            img = imread(filename)
+        except Exception as e:
+            load_exception = str(e)
+            load_error = True
+        if not load_error:
+            img_grad = sobel(img)  # gradient image
+            if masking:  # apply circular binary mask on original and gradient image
+                img = np.ma.array(img, mask=mask)
+                img_grad = np.ma.array(img_grad, mask=mask)
+            # Calculate mean, stddev, sharpness on center circular region of image
+            ma_mean = img.mean()
+            ma_stddev = img.std()
+            ma_sharp = img_grad.mean()
+        return ma_mean, ma_stddev, ma_sharp, load_error, load_exception
+
+
     def save_tile_stats(self, base_dir, grid_index, tile_index, slice_counter):
         """Write mean and SD of specified tile to disk."""
         success = True
@@ -281,8 +315,11 @@ class ImageInspector:
             try:
                 with open(stats_filename, 'a') as file:
                     file.write(str(slice_counter).zfill(utils.SLICE_DIGITS)
-                               + ';' + str(self.tile_means[tile_key][-1][1])
-                               + ';' + str(self.tile_stddevs[tile_key][-1][1])                              
+                               + ';' + "{:.3f}".format(self.tile_means[tile_key][-1][1])
+                               + ';' + "{:.3f}".format(self.tile_stddevs[tile_key][-1][1])
+                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][1])
+                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][2])
+                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][3])
                                + '\n')
             except Exception as e:
                 success = False  # writing to disk failed

@@ -28,7 +28,7 @@ from dateutil.relativedelta import relativedelta
 from PyQt5.QtWidgets import QMessageBox
 
 import utils
-from utils import Error
+from utils import Error, create_mask, save_mask
 
 
 class Acquisition:
@@ -49,6 +49,7 @@ class Acquisition:
         self.autofocus = autofocus
         self.notifications = notifications
         self.main_controls_trigger = main_controls_trigger
+        self.img_masks = {}
 
         # Error state (see full list: utils.Errors) and further info
         # about the error in a string
@@ -146,6 +147,7 @@ class Acquisition:
         notes_file = os.path.join(self.base_dir, self.stack_name + '_notes.txt')
         if not os.path.isfile(notes_file):
             open(notes_file, 'a').close()
+
 
     @property
     def base_dir(self):
@@ -446,6 +448,15 @@ class Acquisition:
             # Save current grid setup
             gridmap_filename = self.gm.save_tile_positions_to_disk(
                 self.base_dir, timestamp)
+
+            # Create and save circular binary masks for image quality inspection
+            tile_sizes = {'mask_4k':(4096, 3072), 'mask_3k': (3072, 2304), 'mask_2k':(2048, 1536)}
+            for size in tile_sizes:
+                mask_fn = os.path.join(
+                    self.base_dir, 'meta', 'stats', size + '.tif')
+                mask = utils.create_mask(tile_sizes[size])
+                utils.save_mask(mask, mask_fn)
+
             # Create main log file, in which all entries are saved.
             # No line limit.
             self.main_log_filename = os.path.join(
@@ -592,6 +603,8 @@ class Acquisition:
 
         self.set_up_acq_subdirectories()
         self.set_up_acq_logs()
+        # masks for image quality inspection
+        self.img_masks = utils.load_masks(os.path.join(self.base_dir, 'meta', 'stats'))
 
         # Proceed if no error has occurred during setup of folders and logs
         if self.error_state == Error.none:
@@ -2378,6 +2391,14 @@ class Acquisition:
 
             # Check if image was saved and process it
             if os.path.isfile(save_path):
+                # get key to appropriate image mask for quality monitor
+                tile_width, tile_height = self.gm[grid_index].frame_size
+                tile_asp_ratio = {'mask_2k': 2048, 'mask_3k': 3072, 'mask_4k': 4096}
+                mask_key = ''
+                for key, width in tile_asp_ratio.items():
+                    if width == tile_width:
+                        mask_key = key
+
                 start_time = time()
                 (tile_img, mean, stddev,
                  range_test_passed, slice_by_slice_test_passed, tile_selected,
@@ -2385,7 +2406,7 @@ class Acquisition:
                  grab_incomplete, frozen_frame_error) = (
                     self.img_inspector.process_tile(save_path,
                                                     grid_index, tile_index,
-                                                    self.slice_counter))
+                                                    self.slice_counter, self.img_masks[mask_key]))
                 # Time the duration of process_tile()
                 end_time = time()
                 inspect_duration = end_time - start_time
