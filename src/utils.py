@@ -924,3 +924,33 @@ def load_masks(path):
         key = str.split(basename(fn), '.')[0]
         masks[key] = imread(fn)
     return masks
+
+from skimage.util import crop
+from skimage.registration import phase_cross_correlation
+from scipy.ndimage import fourier_shift
+
+def pad(a):
+    '''
+    cropping the array requires the knowledge of how many items should be cropped (form both ends)
+    input: nr of items to be removed from one end of an array
+    output: 2-tuple, that contains how much the array should be cropped from both end with correct orientation
+    '''
+    p = [0, int(np.ceil(abs(a)))]
+    return p if a<=0 else p[::-1]
+
+def shift_image(arr, shift):
+    offset_img = fourier_shift(np.fft.fftn(arr), shift)
+    return np.fft.ifftn(offset_img).real
+
+def reg_cross_corr(im1, im2):
+    shift, err, diffphase = phase_cross_correlation(im1, im2, upsample_factor=20)
+    im2s = shift_image(im2, shift)
+    crop_vals = [pad(shift[0]), pad(shift[1])]
+    im2s = crop(im2s, crop_vals)
+    im1 = np.asfarray(crop(im1, crop_vals))
+    return im1, im2s
+
+
+# compute xy drift between tiles
+def get_ref_img_fn(filename):
+    s = str.split(filename, '_')[-1]

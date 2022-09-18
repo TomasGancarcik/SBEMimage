@@ -17,8 +17,8 @@ import psutil
 import numpy as np
 
 from skimage.io import imread
-from skimage.draw import disk
 from imageio import imwrite
+from skimage.registration import phase_cross_correlation
 from scipy.signal import medfilt2d
 from collections import deque
 from PIL import Image
@@ -37,6 +37,7 @@ PREVIEW_IMG_WIDTH = 512
 class ImageInspector:
 
     def __init__(self, config, overview_manager, grid_manager):
+        self.tile_drift = {}
         self.cfg = config
         self.ovm = overview_manager
         self.gm = grid_manager
@@ -182,6 +183,21 @@ class ImageInspector:
 
         ma_mean, ma_stddev, ma_sharp, err, ex = (self.load_and_inspect_image_quality(filename, mask, masking=True))
 
+        ref_img = None
+        drift = (0,0)
+        ref_img_fn = utils.get_ref_img_fn(filename)
+        ref_img_load_err = False
+        try:
+            ref_img = imread(ref_img_fn)
+        except:
+            print('Can not read reference image.')
+            ref_img_load_err = True
+
+        if not ref_img_load_err:
+            drift = self.compute_drift(filename)
+        else:
+            drift = ('NaN', 'NaN')
+
         if not (load_error and err):
 
             tile_key = ('g' + str(grid_index).zfill(utils.GRID_DIGITS)
@@ -300,6 +316,13 @@ class ImageInspector:
             ma_stddev = img.std()
             ma_sharp = img_grad.mean()
         return ma_mean, ma_stddev, ma_sharp, load_error, load_exception
+
+
+    def compute_drift(self, reference_fn, moving_fn):
+        ref_img = imread(reference_fn)
+        moving_img = imread(moving_fn)
+        shift, err, diffphase = phase_cross_correlation(ref_img, moving_img, upsample_factor=20)
+        return shift
 
 
     def save_tile_stats(self, base_dir, grid_index, tile_index, slice_counter):
