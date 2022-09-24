@@ -1929,7 +1929,7 @@ class Viewport(QWidget):
                     show_autofocus_label = (
                         self.gm[grid_index][tile_index].autofocus_active
                         and self.acq.use_autofocus
-                        and (self.autofocus.method < 2 or self.autofocus.method == 3))
+                        and (self.autofocus.method < 2 or self.autofocus.method > 3))
                     show_tracking_label = (
                         self.gm[grid_index][tile_index].autofocus_active
                         and self.acq.use_autofocus

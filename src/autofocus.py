@@ -16,13 +16,19 @@ et al. (2011), described in Appendix A of Binding et al. (2012).
 """
 
 import json
+from typing import Union, Tuple, Optional, List, Any
+
 import numpy as np
 from math import sqrt, exp, sin, cos
 from statistics import mean
+
+from numpy import ndarray
+
 import utils
 from time import sleep, time
 from scipy.signal import correlate2d, fftconvolve
 import autofocus_mapfost
+from scipy.interpolate import interp1d
 
 
 class Autofocus():
@@ -65,9 +71,8 @@ class Autofocus():
         # If MagC mode active, enforce method and tracking mode
         self.magc_mode = (self.cfg['sys']['magc_mode'].lower() == 'true')
         if self.magc_mode:
-            self.method = 0         # SmartSEM autofocus
+            self.method = 0  # SmartSEM autofocus
             self.tracking_mode = 0  # Track selected, approx. others
-
 
         self.MAPFOST_PATCH_SIZE = [768, 768]
         self.MAPFOST_FRAME_RESOLUTION = 2
@@ -77,12 +82,21 @@ class Autofocus():
         self.mapfost_conv_thresh = float(self.cfg['autofocus']['mapfost_convergence_threshold_um'])
         self.mapfost_large_aberrations = int(self.cfg['autofocus']['mapfost_large_aberrations'])
 
-
         # Mapfost Calibration Parameters
         self.mapfost_probe_conv = float(self.cfg['autofocus']['mapfost_probe_convergence_angle'])
         self.mapfost_stig_rot = float(self.cfg['autofocus']['mapfost_astig_rotation_deg'])
         self.mapfost_stig_scale = json.loads(self.cfg['autofocus']['mapfost_astig_scaling'])
 
+        # Automated Focus/Stigmator Series
+        self.afss_wd_delta = 500e-9  # WD perturbation = 500nm
+        self.afss_stig_x_delta = 0.1  # percent
+        self.afss_stig_y_delta = 0.1  # percent
+        self.afss_rounds = 5  # number of induced focus/stig deviations
+        self.afss_offset = 0  # skip N slices before first AFSS activation
+        self.afss_wd_stig_orig = {}  # original values before the AFSS started
+        self.afss_perturbation_series = []
+        self.afss_wd_stig_corr = {}  # values of Automated focus-stigmator series 
+        self.afss_wd_stig_corr_optima = {}  # Computed corrections for automated focus-stigmator series
 
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
@@ -112,7 +126,7 @@ class Autofocus():
         autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
         if active_tiles and autofocus_ref_tiles:
             for tile in active_tiles:
-                min_dist = 10**6
+                min_dist = 10 ** 6
                 nearest_tile = None
                 for af_tile in autofocus_ref_tiles:
                     dist = self.gm[grid_index].distance_between_tiles(
@@ -141,7 +155,7 @@ class Autofocus():
             autofocus_active = (slice_counter % self.interval == 0)
         if -1 < self.autostig_delay < slice_counter:
             autostig_active = ((
-                (slice_counter - self.autostig_delay) % self.interval) == 0)
+                                       (slice_counter - self.autostig_delay) % self.interval) == 0)
         return autofocus_active, autostig_active
 
     def run_zeiss_af(self, autofocus=True, autostig=True):
@@ -185,7 +199,8 @@ class Autofocus():
             msg = 'ERROR during ' + msg + '.'
         return msg
 
-    def run_mapfost_af(self, aberr_mode_bools=[1,1,1], large_aberrations=0, pixel_size=None, max_wd_stigx_stigy= None) -> str:
+    def run_mapfost_af(self, aberr_mode_bools=[1, 1, 1], large_aberrations=0, pixel_size=None,
+                       max_wd_stigx_stigy=None) -> str:
         """
         MAPFoSt (cf. Binding et al. 2013)
         implementation by Rangoli Saxena, 2020.
@@ -195,21 +210,20 @@ class Autofocus():
         try:
             if pixel_size is None:
                 pixel_size = self.pixel_size
-            self.sem.apply_frame_settings(self.MAPFOST_FRAME_RESOLUTION, pixel_size , self.mapfost_dwell_time)
+            self.sem.apply_frame_settings(self.MAPFOST_FRAME_RESOLUTION, pixel_size, self.mapfost_dwell_time)
             mapfost_params = {'num_aperture': self.mapfost_probe_conv,
                               'stig_rot_deg': self.mapfost_stig_rot,
                               'stig_scale': self.mapfost_stig_scale,
                               'crop_size': self.MAPFOST_PATCH_SIZE}
             corrections = autofocus_mapfost.run(self.sem.sem_api, working_distance_perturbations=[self.mapfost_wd_pert],
-                                                mapfost_params=mapfost_params, max_iters = self.mapfost_max_iters,
-                                                convergence_threshold = self.mapfost_conv_thresh,
+                                                mapfost_params=mapfost_params, max_iters=self.mapfost_max_iters,
+                                                convergence_threshold=self.mapfost_conv_thresh,
                                                 aberr_mode_bools=aberr_mode_bools, large_aberrations=large_aberrations,
                                                 max_wd_stigx_stigy=max_wd_stigx_stigy)
             msg = 'Completed MAPFoSt AF. \n List of corrections : \n' + str(corrections)
         except Exception as e:
             msg = f'CTRL: Exception ({str(e)}) during MAPFoSt AF.'
         return msg
-
 
     def calibrate_mapfost_af(self, calib_mode) -> str:
         """
@@ -223,7 +237,7 @@ class Autofocus():
             self.sem.apply_frame_settings(self.MAPFOST_FRAME_RESOLUTION, self.pixel_size, self.mapfost_dwell_time)
             mapfost_params = {'num_aperture': self.mapfost_probe_conv,
                               'stig_rot_deg': 0,
-                              'stig_scale': [1.,1.],
+                              'stig_scale': [1., 1.],
                               'crop_size': self.MAPFOST_PATCH_SIZE}
             calib_param = autofocus_mapfost.calibrate(self.sem.sem_api, mapfost_params=mapfost_params,
                                                       calib_mode=calib_mode)
@@ -231,7 +245,6 @@ class Autofocus():
         except Exception as e:
             msg = f'CTRL: Exception ({str(e)}) during MAPFoSt AF.'
         return msg
-
 
     # ================ Below: methods for heuristic autofocus ==================
 
@@ -241,8 +254,8 @@ class Autofocus():
         """
         height, width = tile_img.shape[0], tile_img.shape[1]
         # Crop image to 512 x 512 central area
-        self.img[tile_key] = tile_img[int(height/2 - 256):int(height/2 + 256),
-                                      int(width/2 - 256):int(width/2 + 256)]
+        self.img[tile_key] = tile_img[int(height / 2 - 256):int(height / 2 + 256),
+                             int(width / 2 - 256):int(width / 2 + 256)]
 
     def process_image_for_heuristic_af(self, tile_key):
         """Compute single-image estimators as described in Appendix A of
@@ -261,8 +274,8 @@ class Autofocus():
         autocorr = fftconvolve(img, img[::-1, ::-1]) / norm
         height, width = autocorr.shape[0], autocorr.shape[1]
         # Crop to 64 x 64 px central region
-        autocorr = autocorr[int(height/2 - 32):int(height/2 + 32),
-                            int(width/2 - 32):int(width/2 + 32)]
+        autocorr = autocorr[int(height / 2 - 32):int(height / 2 + 32),
+                   int(width / 2 - 32):int(width / 2 + 32)]
         # Calculate coefficients
         fi = self.muliply_with_mask(autocorr, self.fi_mask)
         fo = self.muliply_with_mask(autocorr, self.fo_mask)
@@ -295,11 +308,11 @@ class Autofocus():
         """Use the estimators to calculate corrections."""
 
         if (len(self.foc_est[tile_key]) > 1
-            and len(self.astgx_est[tile_key]) > 1
-            and len(self.astgy_est[tile_key]) > 1):
+                and len(self.astgx_est[tile_key]) > 1
+                and len(self.astgy_est[tile_key]) > 1):
 
             wd_corr = (self.heuristic_calibration[0]
-                  * (self.foc_est[tile_key][0] - self.foc_est[tile_key][1]))
+                       * (self.foc_est[tile_key][0] - self.foc_est[tile_key][1]))
             a1 = (self.heuristic_calibration[1]
                   * (self.astgx_est[tile_key][0] - self.astgx_est[tile_key][1]))
             a2 = (self.heuristic_calibration[2]
@@ -310,12 +323,12 @@ class Autofocus():
             ax_corr *= self.scale_factor
             ay_corr *= self.scale_factor
             # Check if results are within permissible range
-            within_range = (abs(wd_corr/1000) <= self.max_wd_diff
+            within_range = (abs(wd_corr / 1000) <= self.max_wd_diff
                             and abs(ax_corr) <= self.max_stig_x_diff
                             and abs(ay_corr) <= self.max_stig_y_diff)
             if within_range:
                 # Store corrections for this tile in dictionary
-                self.wd_stig_corr[tile_key] = [wd_corr/1000, ax_corr, ay_corr]
+                self.wd_stig_corr[tile_key] = [wd_corr / 1000, ax_corr, ay_corr]
             else:
                 self.wd_stig_corr[tile_key] = [0, 0, 0]
 
@@ -361,22 +374,22 @@ class Autofocus():
 
         for i in range(self.ACORR_WIDTH):
             for j in range(self.ACORR_WIDTH):
-                x, y = i - self.ACORR_WIDTH/2, j - self.ACORR_WIDTH/2
-                r = sqrt(x**2 + y**2)
+                x, y = i - self.ACORR_WIDTH / 2, j - self.ACORR_WIDTH / 2
+                r = sqrt(x ** 2 + y ** 2)
                 if r == 0:
                     r = 1  # Prevent division by zero
-                sinφ = x/r
-                cosφ = y/r
-                exp_astig = exp(-r**2/α) - exp(-r**2/β)
+                sinφ = x / r
+                cosφ = y / r
+                exp_astig = exp(-r ** 2 / α) - exp(-r ** 2 / β)
 
                 # Six masks for the calculation of coefficients:
                 # fi, fo, apx, amx, apy, amy
-                self.fi_mask[i, j] = exp(-r**2/γ) - exp(-r**2/δ)
-                self.fo_mask[i, j] = exp(-r**2/ε) - exp(-r**2/γ)
-                self.apx_mask[i, j] = sinφ**2 * exp_astig
-                self.amx_mask[i, j] = cosφ**2 * exp_astig
-                self.apy_mask[i, j] = 0.5 * (sinφ + cosφ)**2 * exp_astig
-                self.amy_mask[i, j] = 0.5 * (sinφ - cosφ)**2 * exp_astig
+                self.fi_mask[i, j] = exp(-r ** 2 / γ) - exp(-r ** 2 / δ)
+                self.fo_mask[i, j] = exp(-r ** 2 / ε) - exp(-r ** 2 / γ)
+                self.apx_mask[i, j] = sinφ ** 2 * exp_astig
+                self.amx_mask[i, j] = cosφ ** 2 * exp_astig
+                self.apy_mask[i, j] = 0.5 * (sinφ + cosφ) ** 2 * exp_astig
+                self.amy_mask[i, j] = 0.5 * (sinφ - cosφ) ** 2 * exp_astig
 
     def muliply_with_mask(self, autocorr, mask):
         numerator_sum = 0
@@ -392,3 +405,83 @@ class Autofocus():
         self.astgx_est = {}
         self.astgy_est = {}
         self.wd_stig_corr = {}
+
+    # ================ Below: methods for Automated focus/stig series method ==================
+    # def store_wd_stig_before_afss(self, grid_index, tile_index):
+    #     for tile in self.gm[]
+
+    def process_afss_series(self, mode_focus=False, mode_stigX=False, mode_stigY=False, plot_results=False):
+        print(self.afss_wd_stig_corr)
+        for tile_key in self.afss_wd_stig_corr:
+            #  wd_opt, stig_x_opt, stig_y_opt = None, None, None
+            x_vals, y_vals = [], []
+            opt = 0.1
+            cfs = []
+            tile_dict = self.afss_wd_stig_corr[tile_key]  # values of particular tile to be processed
+            print(tile_dict)
+            # read the values (wd, sharpness)
+            for slice_nr in tile_dict:
+                x_vals.append(tile_dict[slice_nr][0])  # WDs/StigX/StigY
+                y_vals.append(tile_dict[slice_nr][1])  # list of sharpness values
+
+            print('x_vals: ', x_vals)
+            print('y_vals: ', y_vals)
+            # POLYFIT
+            # cfs = np.polyfit(x_vals, y_vals, 2, rcond=None, full=False, w=None, cov=False)
+            # opt = -cfs[1] / (2 * cfs[0])
+            #  if cfs:  # TODO check that fit converged
+            #      print('cfs:', cfs)
+            # else:
+            #     print('cfs:', cfs)
+
+            # SPLINE INTERPOLATION
+            f1 = interp1d(x_vals, y_vals, kind='cubic')
+            x_new = np.linspace(min(x_vals), max(x_vals), num=101, endpoint=True)
+            opt = x_new[np.argmax(f1(x_new))]
+
+            if plot_results:
+                self.plot_afss_series(x_vals, y_vals, cfs, path='')
+                pass
+
+            self.afss_wd_stig_corr_optima[tile_key] = opt
+        self.afss_wd_stig_corr = {}
+
+    def apply_afss_corrections(self):
+        """Apply individual tile corrections."""
+        for tile_key in self.afss_wd_stig_corr_optima:
+            g, t = tile_key.split('.')
+            g, t = int(g), int(t)
+            self.gm[g][t].wd = self.afss_wd_stig_corr_optima[tile_key]
+            # TODO
+            #self.gm[g][t].wd = self.afss_wd_stig_corr_optima[tile_key][0]
+            #self.gm[g][t].stig_xy[0] += self.afss_wd_stig_corr[tile_key][1]
+            #self.gm[g][t].stig_xy[1] += self.afss_wd_stig_corr[tile_key][2]
+
+    def reset_afss_corrections(self):
+        self.afss_wd_stig_corr = {}
+        self.afss_wd_stig_corr_optima = {}
+
+    def get_afss_perturbations(self):
+        #  get list of WD or Stig perturbations to be used in automated focus/stig series
+        n_items = self.afss_rounds
+        self.afss_perturbation_series = np.linspace(-n_items / 2, n_items / 2, n_items + 1)
+
+    # def plot_afss_series(x_vals, y_vals, cfs, basedir, grid_index, tile_index, slice_counter):
+    #     success = True
+    #     error_msg = ''
+    #     tile_key = ('g' + str(grid_index).zfill(utils.GRID_DIGITS)
+    #                 + '_' + 't' + str(tile_index).zfill(utils.TILE_DIGITS))
+    #     if tile_key in self.tile_means and tile_key in self.tile_stddevs:
+    #         graph_filename = os.path.join(
+    #             base_dir, 'meta', 'stats', tile_key + '.png')
+    #
+    #     x = np.linspace(min(x_vals), max(x_vals), 1000)
+    #     y = cfs[0] * x ** 2 + cfs[1] * x + cfs[2]
+    #     rcParams['figure.figsize'] = (8, 6)
+    #     rcParams.update({'font.size': 16})
+    #     plot(x_vals, y_vals, 'o', label='Focus series')
+    #     plot(x, y, '-', label='polyfit')
+    #     xlabel('Working distance [mm]')
+    #     ylabel('Sharpness [arb.u]')
+    #     fn = str.join(basedir, 'wd_stig_corr_s', slice_nr, tile_key, '.png')
+    #     savefig(graph_filename, dpi=100)  # TODO path

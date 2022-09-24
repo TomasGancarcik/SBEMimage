@@ -12,7 +12,6 @@
 
 import os
 import datetime
-import json
 import re
 import logging
 import threading
@@ -31,7 +30,7 @@ from skimage.transform import ProjectiveTransform
 from serial.tools import list_ports
 from PyQt5.QtCore import QObject, pyqtSignal
 from skimage.measure import ransac
-
+from matplotlib.pyplot import ylabel, plot, savefig, rcParams, xlabel
 
 # Default and minimum size of the Viewport canvas.
 VP_WIDTH = 1000
@@ -137,6 +136,7 @@ class Error(Enum):
     autofocus_heuristic = 506
     wd_stig_difference = 507
     metadata_server = 508
+    autofocus_afss = 509
 
     # Reserved for user-defined errors
     test_case = 601
@@ -210,6 +210,7 @@ Errors = {
     Error.tile_image_compare: 'Tile image error (slice-by-slice comparison)',
     Error.autofocus_smartsem: 'Autofocus error (SmartSEM)',
     Error.autofocus_heuristic: 'Autofocus error (heuristic)',
+    Error.autofocus_afss: 'Autofocus error (Automated Focus/Stig series)',
     Error.wd_stig_difference: 'WD/STIG difference error',
     Error.metadata_server: 'Metadata server error',
 
@@ -888,7 +889,10 @@ def barycenter(points):
 
 # -------------- End of MagC utils --------------
 
+
 def _sobel(data, kernel=5): #kernel = -1 ==Scharr
-    sobelx = cv2.Sobel(data,cv2.CV_64F,1,0,kernel)
-    sobely = cv2.Sobel(data,cv2.CV_64F,0,1,kernel)
-    return np.mean(cv2.magnitude(sobelx, sobely))
+    sobel_x = cv2.Sobel(data,cv2.CV_64F,1,0,kernel)
+    sobel_y = cv2.Sobel(data,cv2.CV_64F,0,1,kernel)
+    return np.mean(cv2.magnitude(sobel_x, sobel_y))
+
+

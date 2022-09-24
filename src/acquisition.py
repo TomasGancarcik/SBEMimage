@@ -628,6 +628,14 @@ class Acquisition:
             # Reset current estimators and corrections
             self.autofocus.reset_heuristic_corrections()
 
+            # wd and stig deviations, needed for
+            # automated focus/stig series, otherwise set to 0
+            self.afss_wd_delta, self.afss_stig_x_delta, self.afss_stig_y_delta = 0, 0, 0
+            # List of tiles to be processed for AFSS during the cut cycle
+            self.do_afss_corrections = False
+            # Reset AFSS corrections
+            self.autofocus.reset_afss_corrections()
+
             # Discard previous tile statistics in image inspector that are
             # used for tile-by-tile comparisons and quality checks.
             self.img_inspector.reset_tile_stats()
@@ -1183,6 +1191,24 @@ class Acquisition:
                         'Error: Differences in WD/STIG too large.')
                     self.add_to_main_log(
                         'CTRL: Error: Differences in WD/STIG too large.')
+            #  AFSS queue processing
+            elif self.do_afss_corrections:
+                utils.log_info('AFSS', 'Applying corrections to WD/STIG.')
+                self.autofocus.process_afss_series()
+                for tile_key in self.autofocus.afss_wd_stig_corr_optima:
+                    utils.log_info('AFSS', f'Applying correction: {tile_key}, {self.autofocus.afss_wd_stig_corr_optima[tile_key]}')
+                    self.add_to_main_log('AFSS: Applying corrections to WD/STIG.')
+
+                self.autofocus.apply_afss_corrections()
+                #self.autofocus.plot_afss_series(self.tile)
+                # # If there were jumps in WD/STIG above the allowed thresholds
+                # # (error 507), add message to the log.
+                # if self.error_state == Error.wd_stig_difference:
+                #      utils.log_error(
+                #          'CTRL',
+                #          'Error: Differences in WD/STIG (AFSS) too large.')
+                #      self.add_to_main_log(
+                #          'CTRL: Error: Differences in WD/STIG (AFSS)too large.')
             else:
                 # TODO: why is that? all microtomes already wait for completion during do_full_cut.
                 if not self.microtome.device_name == 'GCIB':
@@ -1827,6 +1853,45 @@ class Acquisition:
                     break
                 self.do_autofocus_before_grid_acq(grid_index)
             self.gm.fit_apply_aberration_gradient()
+
+        # For Automated Focus/Stigmator series (method 4), apply the WD or Stigmator
+        # perturbations
+        if self.use_autofocus and self.autofocus.method == 4:
+            self.do_afss_corrections = False
+            self.autofocus.get_afss_perturbations()  # series of deltas TODO: consider moving this one if later
+            if self.slice_counter % self.autofocus.interval <= self.autofocus.afss_rounds:
+                #  perform perturbation according to the slice position within series
+                position = self.slice_counter % self.autofocus.interval
+                pert = self.autofocus.afss_perturbation_series[position]
+                self.afss_wd_delta = pert * self.autofocus.afss_wd_delta
+                utils.log_info('CTRL', f'{pert}, {self.autofocus.afss_wd_delta}')
+
+                #  TODO: ensure correct behavior if multiple grids are active
+               #for grid_index in range(self.gm.number_grids):
+                #self.do_autofocus_adjustments(grid_index)
+
+                # Apply AFSS perturbations for all ref. tiles
+                autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
+                for tile_index in autofocus_ref_tiles:
+                    if self.slice_counter % self.autofocus.interval == 0:  # store original wd before performing series
+                        self.autofocus.afss_wd_stig_orig[tile_index] = self.gm[grid_index][tile_index].wd
+                    self.gm[grid_index][tile_index].wd += self.afss_wd_delta
+
+                utils.log_info('CTRL', f'Automated Focus/Stigmator series active: ({position}/{self.autofocus.afss_rounds}).')
+                utils.log_info('CTRL', f'AFSS: Induced delta wd: = {(self.afss_wd_delta*1000000)} um.')
+                self.add_to_main_log('CTRL: Automated Focus/Stigmator series active.')
+                self.add_to_main_log(
+                    'CTRL: AFSS: DELTA_WD: {0:+.3f} um.'.format(self.afss_wd_delta))
+
+                # Process all focus/stig series after all series has been acquired and slice finished
+                #  TODO: Following if should also have a binary condition check for successful
+                #  TODO: series acquisition (preferably without pausing the acquisition)
+                if position == self.autofocus.afss_rounds:
+                    self.do_afss_corrections = True
+                    #  Keep the correction dictionary smaller than 10 iterations
+                    if len(self.autofocus.afss_wd_stig_corr) > 10:
+                        self.autofocus.afss_wd_stig_corr.pop(next(iter(self.autofocus.afss_wd_stig_corr)))
+
         for grid_index in range(self.gm.number_grids):
             if self.error_state != Error.none or self.pause_state == 1:
                 break
@@ -1921,7 +1986,7 @@ class Acquisition:
         # Otherwise wd_default, stig_x_default, and stig_y_default are used.
         adjust_wd_stig = (
             self.gm[grid_index].use_wd_gradient
-            or (self.use_autofocus and self.autofocus.tracking_mode < 4))
+            or (self.use_autofocus and self.autofocus.tracking_mode < 5))
         self.tile_wd, self.tile_stig_x, self.tile_stig_y = 0, 0, 0
 
         # The grid's acquisition settings will be applied before the first
@@ -2156,6 +2221,12 @@ class Acquisition:
                         'MAGC SET SECTION STATE GUI-'
                         + str(grid_index)
                         + '-acquired')
+            # AFSS: reset original wds to tracked tiles before grid is acquired again
+            if self.autofocus.method == 4:
+                autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
+                for tile_index in autofocus_ref_tiles:
+                    self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig[tile_index]
+
 
     def acquire_tile(self, grid_index, tile_index,
                      adjust_wd_stig=False, adjust_acq_settings=False):
@@ -2318,11 +2389,11 @@ class Acquisition:
                 self.lock_mag()
 
             # Check mag if locked
-            if self.mag_locked and not self.error_state in [Error.autofocus_smartsem, Error.autofocus_heuristic, Error.wd_stig_difference]:
+            if self.mag_locked and not self.error_state in [Error.autofocus_smartsem, Error.autofocus_heuristic, Error.autofocus_afss, Error.wd_stig_difference]:
                 self.check_locked_mag()
             # Check focus if locked
             if (self.wd_stig_locked
-                    and not self.error_state in [Error.autofocus_smartsem, Error.autofocus_heuristic, Error.wd_stig_difference]):
+                    and not self.error_state in [Error.autofocus_smartsem, Error.autofocus_heuristic, Error.autofocus_afss, Error.wd_stig_difference]):
                 self.check_locked_wd_stig()
 
             # After all preliminary checks complete, now acquire the frame!
@@ -2346,7 +2417,7 @@ class Acquisition:
             grab_duration = end_time - start_time
             self.tile_grab_durations.append(grab_duration)
             grab_overhead = grab_duration - self.sem.current_cycle_time
-            if grab_overhead > 1.5:
+            if grab_overhead > 20.5:  # original val = 1.5 s
                 utils.log_error(
                     'SEM',
                     'Warning: Grab overhead too large '
@@ -2412,7 +2483,7 @@ class Acquisition:
                     # New preview available, show it (if tile previews active)
                     self.main_controls_trigger.transmit('DRAW VP')
 
-                    if self.error_state in [Error.autofocus_smartsem, Error.autofocus_heuristic, Error.wd_stig_difference]:
+                    if self.error_state in [Error.autofocus_smartsem, Error.autofocus_heuristic, Error.autofocus_afss, Error.wd_stig_difference]:
                         # Don't accept tile if autofocus error has ocurred
                         tile_accepted = False
                     else:
@@ -2461,6 +2532,15 @@ class Acquisition:
                                 self.add_to_main_log(
                                     'CTRL: Tile above mean/SD slice-by-slice '
                                     'thresholds.')
+                    # AFSS: add sharpness value of current tile to the correction series:
+                    #  correction series = {tile_id: {slice_nr: (tile_wd, sharpness)}
+                    autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
+                    if tile_accepted and tile_index in autofocus_ref_tiles:
+                        if tile_id not in self.autofocus.afss_wd_stig_corr:
+                            self.autofocus.afss_wd_stig_corr[tile_id] = {}
+                        # utils.log_info('CTRL', f'tile key: {tile_id}, Sh: {self.slice_counter} : {sharpness}')
+                        entry = {self.slice_counter: (self.gm[grid_index][tile_index].wd, sharpness)}
+                        self.autofocus.afss_wd_stig_corr[tile_id].update(entry)
                 else:
                     # Tile image file could not be loaded
                     utils.log_error(
@@ -2840,6 +2920,17 @@ class Acquisition:
 
         # If focus gradient active, adjust focus for grid(s):
         # TODO
+
+        # If Automated Focusing/Stigmator series is active, set perturbated WD/Stig
+        # to all active tracked tiles
+        #if self.use_autofocus and self.autofocus.tracking_mode == 4:
+        # if self.autofocus.method == 4:
+        #     utils.log_info('CTRL', 'Performing AFSS autofocus adjustments.')
+        #     autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
+        #     # Apply AFSS perturbations for all ref. tiles
+        #     for tile_index in autofocus_ref_tiles:
+        #         self.gm[grid_index][tile_index].wd += self.afss_wd_delta
+        #     self.add_to_main_log('CTRL: Performing AFSS autofocus adjustments')
 
     def lock_wd_stig(self):
         self.locked_wd = self.sem.get_wd()

@@ -904,6 +904,11 @@ class Grid:
         for tile in self.__tiles:
             tile.preview_src = ''  # Setter will set preview_img to None
 
+    def store_wd_stig_before_afss(self):
+        #ref_tiles = self.gm.autofocus_ref_tiles
+        #for tile_key in ref_tiles:
+        #    self.afss_wd_stig_orig[tile_key] = self.gm[]
+        return None
 
 class GridManager:
 
