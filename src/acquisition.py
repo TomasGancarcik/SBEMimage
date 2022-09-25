@@ -1007,6 +1007,11 @@ class Acquisition:
         if self.acq_paused:
             utils.log_info('CTRL', 'Stack paused.')
             self.add_to_main_log('CTRL: Stack paused.')
+            # reset AFSS series and set original WD/Stig to reference tiles
+            utils.log_info('AFSS:', 'Resetting original WD/Stig values.')
+            self.add_to_main_log('AFSS: Resetting original WD/Stig values.')
+            for grid_index in range(self.gm.number_grids):
+                self.autofocus.reset_afss_series(grid_index)
 
         # Update acquisition status in Main Controls GUI
         self.main_controls_trigger.transmit('ACQ NOT IN PROGRESS')
@@ -1864,23 +1869,28 @@ class Acquisition:
             self.autofocus.get_afss_perturbations()  # series of deltas TODO: consider moving this one if later
             if self.slice_counter % self.autofocus.interval <= self.autofocus.afss_rounds:
                 #  perform perturbation according to the slice position within series
-                position = self.slice_counter % self.autofocus.interval
-                pert = self.autofocus.afss_perturbation_series[position]
+                self.autofocus.afss_current_round = self.slice_counter % self.autofocus.interval
+                pert = self.autofocus.afss_perturbation_series[self.autofocus.afss_current_round]
                 self.afss_wd_delta = pert * self.autofocus.afss_wd_delta
 
                 #  TODO: ensure correct behavior if multiple grids are active
                #for grid_index in range(self.gm.number_grids):
                 #self.do_autofocus_adjustments(grid_index)
 
-                # Apply AFSS perturbations for all ref. tiles
-                autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
-                for tile_index in autofocus_ref_tiles:
-                    if self.slice_counter % self.autofocus.interval == 0:  # store original wd before performing series
-                        tile_key = f'{grid_index}.{tile_index}'
-                        self.autofocus.afss_wd_stig_orig[tile_key] = self.gm[grid_index][tile_index].wd
-                    self.gm[grid_index][tile_index].wd += self.afss_wd_delta
+                # Apply AFSS perturbations for all ref. tiles in active grids
+                for grid_index in range(self.gm.number_grids):
+                    if not self.gm[grid_index].active:
+                        pass
+                    else:
+                        autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
+                        for tile_index in autofocus_ref_tiles:
+                            # store original wd before performing series
+                            if self.slice_counter % self.autofocus.interval == 0:
+                                tile_key = f'{grid_index}.{tile_index}'
+                                self.autofocus.afss_wd_stig_orig[tile_key] = self.gm[grid_index][tile_index].wd
+                            self.gm[grid_index][tile_index].wd += self.afss_wd_delta
 
-                utils.log_info('CTRL', f'Automated Focus/Stigmator series active: ({position}/{self.autofocus.afss_rounds}).')
+                utils.log_info('CTRL', f'Automated Focus/Stigmator series active: ({self.autofocus.afss_current_round}/{self.autofocus.afss_rounds}).')
                 utils.log_info('CTRL', 'AFSS: delta wd = {0:+.3f} um'.format(self.afss_wd_delta*1000000))
                 self.add_to_main_log('CTRL: Automated Focus/Stigmator series active.')
                 self.add_to_main_log('CTRL: AFSS: DELTA_WD: {0:+.3f} um.'.format(self.afss_wd_delta*1000000))
@@ -1889,7 +1899,7 @@ class Acquisition:
                 # series were acquired and slice finished
                 #  TODO: Following if should also have a binary condition check for successful
                 #  TODO: series acquisition (preferably without pausing the acquisition)
-                if position == self.autofocus.afss_rounds:
+                if self.autofocus.afss_current_round == self.autofocus.afss_rounds:
                     self.do_afss_corrections = True
                     #  Keep the correction dictionary smaller than 10 iterations
                     # if len(self.autofocus.afss_wd_stig_corr) > 10:

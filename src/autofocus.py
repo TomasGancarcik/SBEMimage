@@ -92,8 +92,9 @@ class Autofocus():
         self.afss_stig_x_delta = 0.1  # percent
         self.afss_stig_y_delta = 0.1  # percent
         self.afss_rounds = 3  # number of induced focus/stig deviations
-        self.afss_offset = 0  # skip N slices before first AFSS activation
-        self.afss_offset_reached = False
+        self.afss_current_round = 0  # position of current WD/stig deviation within AFSS series
+        self.afss_offset = 0  # TODO skip N slices before first AFSS activation
+        self.afss_offset_reached = False  # TODO
         self.afss_wd_stig_orig = {}  # original values before the AFSS started
         self.afss_perturbation_series = []
         self.afss_wd_stig_corr = {}  # values of Automated focus-stigmator series 
@@ -176,6 +177,14 @@ class Autofocus():
         n_items = self.afss_rounds
         #  self.afss_perturbation_series = np.linspace(-n_items / 2, n_items / 2, n_items + 1)
         self.afss_perturbation_series = np.linspace(-1, 1, self.afss_rounds + 1)
+
+    def reset_afss_series(self, grid_index):
+        # TODO check what if there are multiple grids with ref tiles (possibly also if inactivated grids)
+        self.afss_current_round = 0
+        autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
+        for tile_index in autofocus_ref_tiles:
+            key = f'{grid_index}.{tile_index}'
+            self.gm[grid_index][tile_index].wd = self.afss_wd_stig_orig[key]
 
     # def plot_afss_series(x_vals, y_vals, cfs, basedir, grid_index, tile_index, slice_counter):
     #     success = True
