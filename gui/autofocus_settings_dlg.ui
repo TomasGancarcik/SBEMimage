@@ -557,7 +557,7 @@
      </rect>
     </property>
     <property name="minimum">
-     <number>1</number>
+     <number>5</number>
     </property>
     <property name="maximum">
      <number>1000</number>
@@ -645,12 +645,12 @@
      <rect>
       <x>10</x>
       <y>140</y>
-      <width>141</width>
+      <width>191</width>
       <height>20</height>
      </rect>
     </property>
     <property name="text">
-     <string>Working distance ±∆ (μm):</string>
+     <string>WD deviation range ±∆ (μm):</string>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="doubleSpinBox_afss_wdDiff">
@@ -663,10 +663,10 @@
      </rect>
     </property>
     <property name="decimals">
-     <number>2</number>
+     <number>3</number>
     </property>
     <property name="minimum">
-     <double>0.100000000000000</double>
+     <double>0.05000000000000</double>
     </property>
     <property name="maximum">
      <double>5.000000000000000</double>
@@ -675,7 +675,7 @@
      <double>0.100000000000000</double>
     </property>
     <property name="value">
-     <double>1.000000000000000</double>
+     <double>1.500000000000000</double>
     </property>
    </widget>
    <widget class="QLabel" name="label_afss_stig">
@@ -745,10 +745,10 @@
      </rect>
     </property>
     <property name="minimum">
-     <number>0</number>
+     <number>3</number>
     </property>
     <property name="maximum">
-     <number>10000</number>
+     <number>100</number>
     </property>
    </widget>
    <widget class="QLabel" name="label_afss_rounds">

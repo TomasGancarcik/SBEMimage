@@ -91,8 +91,9 @@ class Autofocus():
         self.afss_wd_delta = 500e-9  # WD perturbation = 500nm
         self.afss_stig_x_delta = 0.1  # percent
         self.afss_stig_y_delta = 0.1  # percent
-        self.afss_rounds = 5  # number of induced focus/stig deviations
+        self.afss_rounds = 3  # number of induced focus/stig deviations
         self.afss_offset = 0  # skip N slices before first AFSS activation
+        self.afss_offset_reached = False
         self.afss_wd_stig_orig = {}  # original values before the AFSS started
         self.afss_perturbation_series = []
         self.afss_wd_stig_corr = {}  # values of Automated focus-stigmator series 
@@ -115,6 +116,86 @@ class Autofocus():
             self.heuristic_calibration)
         self.cfg['autofocus']['heuristic_rot_scale'] = str(
             [self.rot_angle, self.scale_factor])
+
+    # ================ Below: methods for Automated focus/stig series method ==================
+
+    # def store_wd_stig_before_afss(self, grid_index, tile_index):
+    #     for tile in self.gm[]
+
+    def process_afss_series(self, mode_focus=False, mode_stigX=False, mode_stigY=False, plot_results=False):
+        # print(self.afss_wd_stig_corr)
+        for tile_key in self.afss_wd_stig_corr:
+            #  wd_opt, stig_x_opt, stig_y_opt = None, None, None
+            x_vals, y_vals = [], []
+            opt = 0.1
+            cfs = []
+            tile_dict = self.afss_wd_stig_corr[tile_key]  # values of particular tile to be processed
+
+            # read the values (wd, sharpness)
+            for slice_nr in tile_dict:
+                x_vals.append(tile_dict[slice_nr][0])  # WDs/StigX/StigY
+                y_vals.append(tile_dict[slice_nr][1])  # list of sharpness values
+
+            # POLYFIT
+            # cfs = np.polyfit(x_vals, y_vals, 2, rcond=None, full=False, w=None, cov=False)
+            # opt = -cfs[1] / (2 * cfs[0])
+            #  if cfs:  # TODO check that fit converged
+            #      print('cfs:', cfs)
+            # else:
+            #     print('cfs:', cfs)
+
+            # SPLINE INTERPOLATION
+            f1 = interp1d(x_vals, y_vals, kind='cubic')
+            x_new = np.linspace(min(x_vals), max(x_vals), num=101, endpoint=True)
+            opt = x_new[np.argmax(f1(x_new))]
+
+            if plot_results:
+                self.plot_afss_series(x_vals, y_vals, cfs, path='')
+                pass
+
+            self.afss_wd_stig_corr_optima[tile_key] = opt
+        self.afss_wd_stig_corr = {}
+
+    def apply_afss_corrections(self):
+        """Apply individual tile corrections."""
+        for tile_key in self.afss_wd_stig_corr_optima:
+            g, t = tile_key.split('.')
+            g, t = int(g), int(t)
+            self.gm[g][t].wd = self.afss_wd_stig_corr_optima[tile_key]
+            # TODO
+            #self.gm[g][t].wd = self.afss_wd_stig_corr_optima[tile_key][0]
+            #self.gm[g][t].stig_xy[0] += self.afss_wd_stig_corr[tile_key][1]
+            #self.gm[g][t].stig_xy[1] += self.afss_wd_stig_corr[tile_key][2]
+
+    def reset_afss_corrections(self):
+        self.afss_wd_stig_corr = {}
+        self.afss_wd_stig_corr_optima = {}
+
+    def get_afss_perturbations(self):
+        #  get list of WD or Stig perturbations to be used in automated focus/stig series
+        n_items = self.afss_rounds
+        #  self.afss_perturbation_series = np.linspace(-n_items / 2, n_items / 2, n_items + 1)
+        self.afss_perturbation_series = np.linspace(-1, 1, self.afss_rounds + 1)
+
+    # def plot_afss_series(x_vals, y_vals, cfs, basedir, grid_index, tile_index, slice_counter):
+    #     success = True
+    #     error_msg = ''
+    #     tile_key = ('g' + str(grid_index).zfill(utils.GRID_DIGITS)
+    #                 + '_' + 't' + str(tile_index).zfill(utils.TILE_DIGITS))
+    #     if tile_key in self.tile_means and tile_key in self.tile_stddevs:
+    #         graph_filename = os.path.join(
+    #             base_dir, 'meta', 'stats', tile_key + '.png')
+    #
+    #     x = np.linspace(min(x_vals), max(x_vals), 1000)
+    #     y = cfs[0] * x ** 2 + cfs[1] * x + cfs[2]
+    #     rcParams['figure.figsize'] = (8, 6)
+    #     rcParams.update({'font.size': 16})
+    #     plot(x_vals, y_vals, 'o', label='Focus series')
+    #     plot(x, y, '-', label='polyfit')
+    #     xlabel('Working distance [mm]')
+    #     ylabel('Sharpness [arb.u]')
+    #     fn = str.join(basedir, 'wd_stig_corr_s', slice_nr, tile_key, '.png')
+    #     savefig(graph_filename, dpi=100)  # TODO path
 
     def approximate_wd_stig_in_grid(self, grid_index):
         """Approximate the working distance and stigmation parameters for all
@@ -405,83 +486,3 @@ class Autofocus():
         self.astgx_est = {}
         self.astgy_est = {}
         self.wd_stig_corr = {}
-
-    # ================ Below: methods for Automated focus/stig series method ==================
-    # def store_wd_stig_before_afss(self, grid_index, tile_index):
-    #     for tile in self.gm[]
-
-    def process_afss_series(self, mode_focus=False, mode_stigX=False, mode_stigY=False, plot_results=False):
-        print(self.afss_wd_stig_corr)
-        for tile_key in self.afss_wd_stig_corr:
-            #  wd_opt, stig_x_opt, stig_y_opt = None, None, None
-            x_vals, y_vals = [], []
-            opt = 0.1
-            cfs = []
-            tile_dict = self.afss_wd_stig_corr[tile_key]  # values of particular tile to be processed
-            print(tile_dict)
-            # read the values (wd, sharpness)
-            for slice_nr in tile_dict:
-                x_vals.append(tile_dict[slice_nr][0])  # WDs/StigX/StigY
-                y_vals.append(tile_dict[slice_nr][1])  # list of sharpness values
-
-            print('x_vals: ', x_vals)
-            print('y_vals: ', y_vals)
-            # POLYFIT
-            # cfs = np.polyfit(x_vals, y_vals, 2, rcond=None, full=False, w=None, cov=False)
-            # opt = -cfs[1] / (2 * cfs[0])
-            #  if cfs:  # TODO check that fit converged
-            #      print('cfs:', cfs)
-            # else:
-            #     print('cfs:', cfs)
-
-            # SPLINE INTERPOLATION
-            f1 = interp1d(x_vals, y_vals, kind='cubic')
-            x_new = np.linspace(min(x_vals), max(x_vals), num=101, endpoint=True)
-            opt = x_new[np.argmax(f1(x_new))]
-
-            if plot_results:
-                self.plot_afss_series(x_vals, y_vals, cfs, path='')
-                pass
-
-            self.afss_wd_stig_corr_optima[tile_key] = opt
-        self.afss_wd_stig_corr = {}
-
-    def apply_afss_corrections(self):
-        """Apply individual tile corrections."""
-        for tile_key in self.afss_wd_stig_corr_optima:
-            g, t = tile_key.split('.')
-            g, t = int(g), int(t)
-            self.gm[g][t].wd = self.afss_wd_stig_corr_optima[tile_key]
-            # TODO
-            #self.gm[g][t].wd = self.afss_wd_stig_corr_optima[tile_key][0]
-            #self.gm[g][t].stig_xy[0] += self.afss_wd_stig_corr[tile_key][1]
-            #self.gm[g][t].stig_xy[1] += self.afss_wd_stig_corr[tile_key][2]
-
-    def reset_afss_corrections(self):
-        self.afss_wd_stig_corr = {}
-        self.afss_wd_stig_corr_optima = {}
-
-    def get_afss_perturbations(self):
-        #  get list of WD or Stig perturbations to be used in automated focus/stig series
-        n_items = self.afss_rounds
-        self.afss_perturbation_series = np.linspace(-n_items / 2, n_items / 2, n_items + 1)
-
-    # def plot_afss_series(x_vals, y_vals, cfs, basedir, grid_index, tile_index, slice_counter):
-    #     success = True
-    #     error_msg = ''
-    #     tile_key = ('g' + str(grid_index).zfill(utils.GRID_DIGITS)
-    #                 + '_' + 't' + str(tile_index).zfill(utils.TILE_DIGITS))
-    #     if tile_key in self.tile_means and tile_key in self.tile_stddevs:
-    #         graph_filename = os.path.join(
-    #             base_dir, 'meta', 'stats', tile_key + '.png')
-    #
-    #     x = np.linspace(min(x_vals), max(x_vals), 1000)
-    #     y = cfs[0] * x ** 2 + cfs[1] * x + cfs[2]
-    #     rcParams['figure.figsize'] = (8, 6)
-    #     rcParams.update({'font.size': 16})
-    #     plot(x_vals, y_vals, 'o', label='Focus series')
-    #     plot(x, y, '-', label='polyfit')
-    #     xlabel('Working distance [mm]')
-    #     ylabel('Sharpness [arb.u]')
-    #     fn = str.join(basedir, 'wd_stig_corr_s', slice_nr, tile_key, '.png')
-    #     savefig(graph_filename, dpi=100)  # TODO path

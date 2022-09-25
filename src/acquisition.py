@@ -251,7 +251,7 @@ class Acquisition:
         # extrapolate until target slice number N.
 
         def calculate_for_slice_range(from_slice, to_slice):
-            """Run through stack (from_slice..to_slice) to calculate exact
+            """Run through stack (from_slice...to_slice) to calculate exact
             raw imaging time, stage move durations, and amount of image data.
             """
             imaging_time = 0
@@ -1194,10 +1194,13 @@ class Acquisition:
             #  AFSS queue processing
             elif self.do_afss_corrections:
                 utils.log_info('AFSS', 'Applying corrections to WD/STIG.')
+                self.add_to_main_log('AFSS: Applying corrections to WD/STIG.')
                 self.autofocus.process_afss_series()
                 for tile_key in self.autofocus.afss_wd_stig_corr_optima:
-                    utils.log_info('AFSS', f'Applying correction: {tile_key}, {self.autofocus.afss_wd_stig_corr_optima[tile_key]}')
-                    self.add_to_main_log('AFSS: Applying corrections to WD/STIG.')
+                    corr_val = (self.autofocus.afss_wd_stig_orig[tile_key] -
+                                self.autofocus.afss_wd_stig_corr_optima[tile_key])*1000000
+                    utils.log_info('AFSS', f'Tile: {tile_key}, delta WD = {round(corr_val,3)} um.')
+                    self.add_to_main_log(f'AFSS: Tile: {tile_key}, delta_WD = {round(corr_val,3)} um.')
 
                 self.autofocus.apply_afss_corrections()
                 #self.autofocus.plot_afss_series(self.tile)
@@ -1864,7 +1867,6 @@ class Acquisition:
                 position = self.slice_counter % self.autofocus.interval
                 pert = self.autofocus.afss_perturbation_series[position]
                 self.afss_wd_delta = pert * self.autofocus.afss_wd_delta
-                utils.log_info('CTRL', f'{pert}, {self.autofocus.afss_wd_delta}')
 
                 #  TODO: ensure correct behavior if multiple grids are active
                #for grid_index in range(self.gm.number_grids):
@@ -1874,23 +1876,24 @@ class Acquisition:
                 autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
                 for tile_index in autofocus_ref_tiles:
                     if self.slice_counter % self.autofocus.interval == 0:  # store original wd before performing series
-                        self.autofocus.afss_wd_stig_orig[tile_index] = self.gm[grid_index][tile_index].wd
+                        tile_key = f'{grid_index}.{tile_index}'
+                        self.autofocus.afss_wd_stig_orig[tile_key] = self.gm[grid_index][tile_index].wd
                     self.gm[grid_index][tile_index].wd += self.afss_wd_delta
 
                 utils.log_info('CTRL', f'Automated Focus/Stigmator series active: ({position}/{self.autofocus.afss_rounds}).')
-                utils.log_info('CTRL', f'AFSS: Induced delta wd: = {(self.afss_wd_delta*1000000)} um.')
+                utils.log_info('CTRL', 'AFSS: delta wd = {0:+.3f} um'.format(self.afss_wd_delta*1000000))
                 self.add_to_main_log('CTRL: Automated Focus/Stigmator series active.')
-                self.add_to_main_log(
-                    'CTRL: AFSS: DELTA_WD: {0:+.3f} um.'.format(self.afss_wd_delta))
+                self.add_to_main_log('CTRL: AFSS: DELTA_WD: {0:+.3f} um.'.format(self.afss_wd_delta*1000000))
 
-                # Process all focus/stig series after all series has been acquired and slice finished
+                # Process entire set of focus/stig series after all
+                # series were acquired and slice finished
                 #  TODO: Following if should also have a binary condition check for successful
                 #  TODO: series acquisition (preferably without pausing the acquisition)
                 if position == self.autofocus.afss_rounds:
                     self.do_afss_corrections = True
                     #  Keep the correction dictionary smaller than 10 iterations
-                    if len(self.autofocus.afss_wd_stig_corr) > 10:
-                        self.autofocus.afss_wd_stig_corr.pop(next(iter(self.autofocus.afss_wd_stig_corr)))
+                    # if len(self.autofocus.afss_wd_stig_corr) > 10:
+                        # self.autofocus.afss_wd_stig_corr.pop(next(iter(self.autofocus.afss_wd_stig_corr)))
 
         for grid_index in range(self.gm.number_grids):
             if self.error_state != Error.none or self.pause_state == 1:
@@ -2225,8 +2228,8 @@ class Acquisition:
             if self.autofocus.method == 4:
                 autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
                 for tile_index in autofocus_ref_tiles:
-                    self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig[tile_index]
-
+                    key = f'{grid_index}.{tile_index}'
+                    self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig[key]
 
     def acquire_tile(self, grid_index, tile_index,
                      adjust_wd_stig=False, adjust_acq_settings=False):
@@ -2979,7 +2982,7 @@ class Acquisition:
                 'Restored previous working distance.')
             self.add_to_main_log('SEM: Restored previous working distance.')
 
-        if (diff_stig_x > 0.000001 or diff_stig_y > 0.000001):
+        if diff_stig_x > 0.000001 or diff_stig_y > 0.000001:
             change_detected = True
             utils.log_warning(
                 'SEM',

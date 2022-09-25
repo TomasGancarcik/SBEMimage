@@ -3210,7 +3210,7 @@ class AutofocusSettingsDlg(QDialog):
         elif self.radioButton_useAFSS.isChecked():
             zeiss_enabled = False
             heuristic_enabled = False
-            diffs_enabled = False
+            diffs_enabled = True
             afss_enabled = True
         self.groupBox_ZEISS_af.setEnabled(zeiss_enabled)
         self.groupBox_heuristic_af.setEnabled(heuristic_enabled)
