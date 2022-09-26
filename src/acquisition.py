@@ -1010,8 +1010,9 @@ class Acquisition:
         if self.acq_paused:
             utils.log_info('CTRL', 'Stack paused.')
             self.add_to_main_log('CTRL: Stack paused.')
-            # reset AFSS series and set original WD/Stig to reference tiles
-            if self.autofocus.afss_wd_stig_orig:
+            # reset AFSS series and set original WD/Stig to reference tiles if stack pause during AFSS run
+            if self.autofocus.afss_active and self.autofocus.afss_wd_stig_orig:  # the second condition is probably
+                # redundant
                 utils.log_info('AFSS:', 'Resetting original WD/Stig values.')
                 self.add_to_main_log('AFSS: Resetting original WD/Stig values.')
                 # for grid_index in range(self.gm.number_grids):
@@ -1224,6 +1225,7 @@ class Acquisition:
                     f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
                 utils.log_info(
                 'AFSS', f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
+                self.autofocus.afss_active = False
 
                 #self.autofocus.plot_afss_series(self.tile)
                 # # If there were jumps in WD/STIG above the allowed thresholds
