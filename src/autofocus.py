@@ -91,14 +91,15 @@ class Autofocus():
         self.afss_wd_delta = 500e-9  # WD perturbation = 500nm
         self.afss_stig_x_delta = 0.1  # percent
         self.afss_stig_y_delta = 0.1  # percent
-        self.afss_rounds = 3  # number of induced focus/stig deviations
+        self.afss_rounds = 3  # number of induced focus/stig deviations -1 (zero dev in the middle)
         self.afss_current_round = 0  # position of current WD/stig deviation within AFSS series
-        self.afss_offset = 0  # TODO skip N slices before first AFSS activation
-        self.afss_offset_reached = False  # TODO
+        self.afss_offset = 1  # skip N slices before first AFSS activation
+        self.afss_next_activation = 0  # slice nr of nearest planned AFSS run
         self.afss_wd_stig_orig = {}  # original values before the AFSS started
-        self.afss_perturbation_series = []
+        self.afss_perturbation_series = []  # series that holds factors by which is the wd/stig delta multiplied
         self.afss_wd_stig_corr = {}  # values of Automated focus-stigmator series 
         self.afss_wd_stig_corr_optima = {}  # Computed corrections for automated focus-stigmator series
+        self.afss_active = False
 
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
@@ -146,6 +147,7 @@ class Autofocus():
             #     print('cfs:', cfs)
 
             # SPLINE INTERPOLATION
+            #x_vals, y_vals = x_vals[::-1], y_vals[::-1]   # reverse order as iterating through dict above is reversed
             f1 = interp1d(x_vals, y_vals, kind='cubic')
             x_new = np.linspace(min(x_vals), max(x_vals), num=101, endpoint=True)
             opt = x_new[np.argmax(f1(x_new))]
@@ -162,13 +164,17 @@ class Autofocus():
         for tile_key in self.afss_wd_stig_corr_optima:
             g, t = tile_key.split('.')
             g, t = int(g), int(t)
-            self.gm[g][t].wd = self.afss_wd_stig_corr_optima[tile_key]
+            opt = self.afss_wd_stig_corr_optima[tile_key]
+            self.gm[g][t].wd = opt
             # TODO
             #self.gm[g][t].wd = self.afss_wd_stig_corr_optima[tile_key][0]
             #self.gm[g][t].stig_xy[0] += self.afss_wd_stig_corr[tile_key][1]
             #self.gm[g][t].stig_xy[1] += self.afss_wd_stig_corr[tile_key][2]
 
-    def reset_afss_corrections(self):
+    def update_afss_wd_stig_orig(self, tile_key, value):
+        self.afss_wd_stig_orig[tile_key] = value
+
+    def reset_afss_corrections(self): # TODO: merge with 'reset_afss_series' ?
         self.afss_wd_stig_corr = {}
         self.afss_wd_stig_corr_optima = {}
 
@@ -176,9 +182,9 @@ class Autofocus():
         #  get list of WD or Stig perturbations to be used in automated focus/stig series
         n_items = self.afss_rounds
         #  self.afss_perturbation_series = np.linspace(-n_items / 2, n_items / 2, n_items + 1)
-        self.afss_perturbation_series = np.linspace(-1, 1, self.afss_rounds + 1)
+        self.afss_perturbation_series = np.linspace(-1, 1, self.afss_rounds+1)
 
-    def reset_afss_series(self, grid_index):
+    def reset_afss_series(self, grid_index):  # TODO: more explanationatory name
         # TODO check what if there are multiple grids with ref tiles (possibly also if inactivated grids)
         self.afss_current_round = 0
         autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()

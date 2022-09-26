@@ -141,6 +141,8 @@ class ImageInspector:
             # Calculate mean and stddev
             mean = np.mean(img)
             stddev = np.std(img)
+
+            # TODO consider computing sharpness only for tracked tiles
             sharpness = utils._sobel(img)
 
 
