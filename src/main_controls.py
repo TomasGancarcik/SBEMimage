@@ -2043,7 +2043,7 @@ class MainControls(QMainWindow):
         self.pushButton_doApproach.setEnabled(False)
         self.pushButton_doSweep.setEnabled(False)
         self.pushButton_grabFrame.setEnabled(False)
-        self.pushButton_EHTToggle.setEnabled(False)
+        #self.pushButton_EHTToggle.setEnabled(False)
         self.actionSEMSettings.setEnabled(False)
         self.actionStageCalibration.setEnabled(False)
         self.actionPlasmaCleanerSettings.setEnabled(False)

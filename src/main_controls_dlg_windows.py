@@ -3016,6 +3016,8 @@ class ImageMonitoringSettingsDlg(QDialog):
         self.spinBox_stddevMax.setValue(self.img_inspector.stddev_upper_limit)
         self.lineEdit_monitorTiles.setText(str(
             self.img_inspector.monitoring_tile_list)[1:-1].replace('\'', ''))
+        self.lineEdit_monitorTiles_excl.setText(str(
+            self.img_inspector.monitoring_tile_list_excl)[1:-1].replace('\'', ''))
         self.doubleSpinBox_meanThreshold.setValue(
             self.img_inspector.tile_mean_threshold)
         self.doubleSpinBox_stdDevThreshold.setValue(
@@ -3029,11 +3031,20 @@ class ImageMonitoringSettingsDlg(QDialog):
         self.img_inspector.stddev_upper_limit = self.spinBox_stddevMax.value()
 
         tile_str = self.lineEdit_monitorTiles.text().strip()
+        tile_str_excl = self.lineEdit_monitorTiles_excl.text().strip()
         if tile_str == 'all':
             self.img_inspector.monitoring_tile_list = ['all']
+            if tile_str_excl:
+                success_excl, tile_list_excl = utils.validate_tile_list(tile_str_excl)
+                if success_excl:
+                    self.img_inspector.monitoring_tile_list_excl = tile_list_excl
+                else:
+                    error_str = 'List of excluded tiles badly formatted.'
         else:
             success, tile_list = utils.validate_tile_list(tile_str)
-            if success:
+            success_excl, tile_list_excl = utils.validate_tile_list(tile_str_excl)
+            if success and success_excl:
+                tile_list = list(set(tile_list) - set(tile_list_excl))
                 self.img_inspector.monitoring_tile_list = tile_list
             else:
                 error_str = 'List of selected tiles badly formatted.'
