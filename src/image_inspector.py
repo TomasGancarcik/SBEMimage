@@ -64,6 +64,8 @@ class ImageInspector:
             self.cfg['monitoring']['stddev_upper_limit'])
         self.monitoring_tile_list = json.loads(
             self.cfg['monitoring']['tile_list'])
+        self.monitoring_tile_list_excl = json.loads(
+            self.cfg['monitoring']['tile_list_excl'])
         self.tile_mean_threshold = float(
             self.cfg['monitoring']['tile_mean_threshold'])
         self.tile_stddev_threshold = float(
@@ -99,6 +101,8 @@ class ImageInspector:
             self.stddev_upper_limit)
         self.cfg['monitoring']['tile_list'] = json.dumps(
             self.monitoring_tile_list)
+        self.cfg['monitoring']['tile_list_excl'] = json.dumps(
+            self.monitoring_tile_list_excl)
         self.cfg['monitoring']['tile_mean_threshold'] = str(
             self.tile_mean_threshold)
         self.cfg['monitoring']['tile_stddev_threshold'] = str(
@@ -155,6 +159,7 @@ class ImageInspector:
 
     def process_tile(self, filename, grid_index, tile_index, slice_counter, mask):
         range_test_passed, slice_by_slice_test_passed = False, False
+        all_key = False
         frozen_frame_error = False
         tile_selected = False
 
@@ -169,6 +174,7 @@ class ImageInspector:
             grab_incomplete = False
             load_error = False
             tile_selected = True
+            mean , stddev = 0, 0
             return (np.zeros((1000, 1000)), mean, stddev,
                     range_test_passed, slice_by_slice_test_passed,
                     tile_selected,
@@ -236,8 +242,19 @@ class ImageInspector:
                 self.tile_stats[tile_key].pop(0)
             self.tile_stats[tile_key].append((slice_counter, ma_mean, ma_stddev, ma_sharp))
 
-            if (tile_key_short in self.monitoring_tile_list
-                    or 'all' in self.monitoring_tile_list):
+            # Exclude particular tiles from list of monitored tiles
+            if 'all' in self.monitoring_tile_list:
+                all_key = True
+                active_tiles = list(self.gm[grid_index].active_tiles)
+                for i, tile in enumerate(active_tiles):
+                    active_tiles[i] = f'{grid_index}.{tile}'
+                self.monitoring_tile_list = list(set(active_tiles) -
+                                                 set(self.monitoring_tile_list_excl))
+            else:
+                self.monitoring_tile_list = list(set(self.monitoring_tile_list) -
+                                                 set(self.monitoring_tile_list_excl))
+            # Perform inspection
+            if tile_key_short in self.monitoring_tile_list:
                 if len(self.tile_means[tile_key]) > 1:
                     diff_mean = abs(self.tile_means[tile_key][0][1]
                                     - self.tile_means[tile_key][1][1])
@@ -256,9 +273,17 @@ class ImageInspector:
                 slice_by_slice_test_passed = None
 
             # Perform range test
-            range_test_passed = (
+            if tile_key_short in self.monitoring_tile_list:
+                range_test_passed = (
                     (self.mean_lower_limit <= mean <= self.mean_upper_limit) and
                     (self.stddev_lower_limit <= stddev <= self.stddev_upper_limit))
+            if tile_key_short in self.monitoring_tile_list_excl:
+                range_test_passed = True
+
+            # If tiles_exclude are defined, reset the original string 'all'
+            # in 'Image Monitoring Settings' -> Tiles to be monitored
+            if all_key:
+                self.monitoring_tile_list = ['all']
 
             # Perform other tests here to decide whether tile is selected for
             # acquisition or discarded:
