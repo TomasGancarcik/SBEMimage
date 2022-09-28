@@ -1209,11 +1209,9 @@ class Acquisition:
             # Processing of the Automated Focus/Stigmator series
             elif self.do_afss_corrections:
                 self.autofocus.process_afss_series()
-                utils.log_info('AFSS', 'AFSS series processed. Checking corrections ...')
-                self.add_to_main_log('AFSS series recorded. Checking corrections ...')
-                if self.autofocus.afss_new_vals_verified():
-                    utils.log_info('AFSS', 'AFSS corrections passed thresholding tests.')
-                    self.add_to_main_log('AFSS corrections passed thresholding tests.')
+                utils.log_info('AFSS', 'AFSS series processing.')
+                self.add_to_main_log('AFSS series processing.')
+                if self.autofocus.afss_new_vals_verified():  # AFSS corrections passed thresholding tests:
                     self.autofocus.apply_afss_corrections()
                     utils.log_info('AFSS', 'Applying corrections to WD/STIG:')
                     self.add_to_main_log('AFSS: Applying corrections to WD/STIG.')
