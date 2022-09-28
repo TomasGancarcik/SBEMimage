@@ -1212,15 +1212,17 @@ class Acquisition:
                 utils.log_info('AFSS', 'Processing series.')
                 self.add_to_main_log('AFSS: Processing series.')
                 if self.autofocus.afss_new_vals_verified():  # AFSS corrections passed thresholding tests:
-                    diffs, mode = self.autofocus.apply_afss_corrections()
-                    if mode == 'avg':
-                        mean_diff = diffs['all']
-                        utils.log_info('AFSS', f'Applying average correction: {round(mean_diff * 10 ** 6, 3)} um')
-                        self.add_to_main_log(f'AFSS: Applying average correction: {round(mean_diff * 10 ** 6, 3)} um')
-                    else:
+                    afss_mode = 'tile_specific'  # or 'avg' for averaging over all corrections
+                    diffs = self.autofocus.apply_afss_corrections(mode=afss_mode)
+                    if afss_mode == 'avg':
+                        mean_diff = round(diffs[afss_mode] * 10 ** 6, 3)
+                        utils.log_info('AFSS', f'Applying average correction: {mean_diff} um')
+                        self.add_to_main_log(f'AFSS: Applying average correction: {mean_diff} um')
+                    elif afss_mode == 'tile_specific':
                         for tile_key in diffs:
-                            utils.log_info('AFSS', f'Tile: {tile_key}, delta WD = {round(diffs[tile_key]* 10 ** 6, 3)} um.')
-                            self.add_to_main_log(f'AFSS: Tile: {tile_key}, delta_WD = {round(diffs[tile_key]* 10 ** 6, 3)} um.')
+                            val = round(diffs[tile_key]* 10 ** 6, 3)
+                            utils.log_info('AFSS', f'Tile: {tile_key}, delta WD = {val} um.')
+                            self.add_to_main_log(f'AFSS: Tile: {tile_key}, delta_WD = {val} um.')
                     self.autofocus.afss_next_activation += self.autofocus.interval
                     self.add_to_main_log(f'AFSS: Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
                     utils.log_info('AFSS', f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')

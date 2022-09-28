@@ -188,13 +188,13 @@ class Autofocus():
 
     def apply_afss_corrections(self, mode='avg'):
         """Apply individual tile corrections."""
-        mode = None
+        # mode = 'tile_specific'  # compute and apply corrections specific to each tile
         # mode = 'avg'  # compute average correction from results of all ref.tiles
         diffs = {}
         mean_diff = self.get_average_afss_correction()
         if mode == 'avg':
-            diffs['all'] = mean_diff
-        else:
+            diffs[mode] = mean_diff
+        elif mode == 'tile_specific':
             utils.log_info('AFSS', 'Applying corrections to WD/STIG:')
         for tile_key in self.afss_wd_stig_corr_optima:
             wd_orig = self.afss_wd_stig_orig[tile_key]
@@ -207,7 +207,7 @@ class Autofocus():
                 self.gm[g][t].wd = wd_new
             # Update original values by new results
             self.afss_wd_stig_orig[tile_key] = self.gm[g][t].wd
-        return diffs, mode
+        return diffs
 
     def update_afss_wd_stig_orig(self, tile_key, value):
         self.afss_wd_stig_orig[tile_key] = value
