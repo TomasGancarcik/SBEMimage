@@ -3163,8 +3163,8 @@ class AutofocusSettingsDlg(QDialog):
         self.doubleSpinBox_stigRot.setValue(self.autofocus.rot_angle)
         self.doubleSpinBox_stigScale.setValue(self.autofocus.scale_factor)
         # For Automated Focus/Stigmator series:
-        self.spinBox_afss_interval.setValue(self.autofocus.interval)
-        self.spinBox_afss_autostigDelay.setValue(self.autofocus.autostig_delay)
+        self.spinBox_afss_interval.setValue(self.autofocus.interval)  # shared with SEM autofocus
+        self.spinBox_afss_autostigDelay.setValue(self.autofocus.autostig_delay)  # shared with SEM autofocus
         self.spinBox_afss_offset.setValue(self.autofocus.afss_offset)
         self.doubleSpinBox_afss_wdDiff.setValue(
             self.autofocus.afss_wd_delta * 1000000)

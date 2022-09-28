@@ -838,6 +838,7 @@ class Acquisition:
             # Define first activation of Automated Focus/Stig series if offset is non-zero
             self.autofocus.afss_next_activation = self.slice_counter + self.autofocus.afss_offset
             utils.log_info('CTRL', f'Automated Focus/Stigmator series will start at slice: {self.autofocus.afss_next_activation}')
+
         # ========================= ACQUISITION LOOP ===========================
 
         while not (self.acq_paused or self.stack_completed):
@@ -1013,8 +1014,8 @@ class Acquisition:
             # reset AFSS series and set original WD/Stig to reference tiles if stack pause during AFSS run
             if self.autofocus.afss_active and self.autofocus.afss_wd_stig_orig:  # the second condition is probably
                 # redundant
-                utils.log_info('AFSS:', 'Resetting original WD/Stig values.')
-                self.add_to_main_log('AFSS: Resetting original WD/Stig values.')
+                utils.log_info('AFSS:', 'Resetting original WD/Stig values to reference tiles.')
+                self.add_to_main_log('AFSS: Resetting original WD/Stig values to reference tiles.')
                 # for grid_index in range(self.gm.number_grids):
                 #     self.autofocus.reset_afss_series(grid_index)
                 self.autofocus.reset_afss_series(grid_index)
@@ -1881,12 +1882,21 @@ class Acquisition:
                 self.do_autofocus_before_grid_acq(grid_index)
             self.gm.fit_apply_aberration_gradient()
 
+        ####  AFSS #####
         # For Automated Focus/Stigmator series (method 4), apply the WD or Stigmator perturbations
         self.do_afss_corrections = False
+        ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
+
+        # Postpone AFSS activation by one slice if offset is zero and if
+        # stack restart happens after some afss reference tile has already been imaged
+        if self.autofocus.afss_offset == 0 and any(x in self.tiles_acquired for x in ref_tiles):
+            self.autofocus.afss_next_activation += 1
+            utils.log_info('CTRL', 'AFSS activation postponed to the next slice (some ref.tiles already imaged.')
+            self.add_to_main_log('CTRL: AFSS activation postponed to the next slice (some ref.tiles already imaged.')
 
         series_active = self.autofocus.afss_next_activation \
                         <= self.slice_counter \
-                        <= self.autofocus.afss_next_activation + self.autofocus.afss_rounds +1
+                        <= self.autofocus.afss_next_activation + self.autofocus.afss_rounds  # TODO remove  +1
         self.autofocus.afss_active = self.use_autofocus and self.autofocus.method == 4 and series_active
 
         # Perform AFSS run and correct iteration within run
@@ -1898,8 +1908,7 @@ class Acquisition:
             self.afss_wd_delta = self.autofocus.afss_wd_delta * fct
 
             # Apply AFSS perturbations for all ref. tiles in active grids
-            autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
-            for tile_index in autofocus_ref_tiles:
+            for tile_index in ref_tiles:
                 # Store original WDs at the beginning of series
                 if self.slice_counter == self.autofocus.afss_next_activation:
                     tile_key = f'{grid_index}.{tile_index}'
@@ -1910,23 +1919,23 @@ class Acquisition:
                 # # Apply AFSS perturbations for all ref. tiles in active grids
                 # for grid_index in range(self.gm.number_grids):
                 #     if self.gm[grid_index].active:
-                #         autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
-                #         for tile_index in autofocus_ref_tiles:
+                #         ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
+                #         for tile_index in ref_tiles:
                 #             # store original WDs before performing series
                 #             if c1 % self.autofocus.interval == 0:
                 #                 tile_key = f'{grid_index}.{tile_index}'
                 #                 self.autofocus.afss_wd_stig_orig[tile_key] = self.gm[grid_index][tile_index].wd
                 #             self.gm[grid_index][tile_index].wd += self.afss_wd_delta
 
-            utils.log_info('CTRL', f'Automated Focus/Stigmator series active: {self.autofocus.afss_current_round +1}/{self.autofocus.afss_rounds +1}')
+            utils.log_info('CTRL', f'Automated Focus/Stigmator series active ({self.autofocus.afss_current_round +1}/{self.autofocus.afss_rounds})')
             utils.log_info('CTRL', 'AFSS: delta wd = {0:+.3f} um'.format(self.afss_wd_delta*1000000))
-            self.add_to_main_log('CTRL: Automated Focus/Stigmator series active.')
+            self.add_to_main_log(f'CTRL: Automated Focus/Stigmator series active ({self.autofocus.afss_current_round +1}/{self.autofocus.afss_rounds})')
             self.add_to_main_log('CTRL: AFSS: DELTA_WD: {0:+.3f} um.'.format(self.afss_wd_delta*1000000))
 
             # Process entire set of focus/stig series after series were acquired ('do_cut' method)
             #  TODO: Following if should also have a binary condition check for successful
             #  TODO: series acquisition (preferably without pausing the acquisition)
-            if self.autofocus.afss_current_round == self.autofocus.afss_rounds:
+            if self.autofocus.afss_current_round == self.autofocus.afss_rounds - 1:
                 self.do_afss_corrections = True
 
         for grid_index in range(self.gm.number_grids):
@@ -2260,12 +2269,13 @@ class Acquisition:
                         + '-acquired')
 
             # AFSS: reset original WDs of tracked tiles before grid is acquired again
-            counter = self.slice_counter + self.autofocus.afss_offset
-            do_reset = counter % self.autofocus.interval <= self.autofocus.afss_rounds
-            if self.autofocus.method == 4 and do_reset and self.autofocus.afss_wd_stig_orig:
-                # utils.log_info('AFSS', 'Setting up original WD values after grid finished.')
-                autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
-                for tile_index in autofocus_ref_tiles:
+            # Skip if afss series has been successfully acquired and will be processed.
+            # Also skip if acquisition has been paused (already solved by acq_paused)
+            # TODO look what happens if acquisition is interrupted (does it equal 'pause' ?)
+            if self.autofocus.afss_active and not self.do_afss_corrections and not self.acq_paused:
+                utils.log_info('AFSS', 'Setting up original WD values after grid finished.')
+                ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
+                for tile_index in ref_tiles:
                     key = f'{grid_index}.{tile_index}'
                     self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig[key]
 
@@ -2575,8 +2585,8 @@ class Acquisition:
                                     'thresholds.')
                     # AFSS: add sharpness value of current tile to the correction series:
                     #  correction series = {tile_id: {slice_nr: (tile_wd, sharpness)}
-                    autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
-                    if tile_accepted and tile_index in autofocus_ref_tiles:
+                    ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
+                    if tile_accepted and tile_index in ref_tiles:
                         if tile_id not in self.autofocus.afss_wd_stig_corr:
                             self.autofocus.afss_wd_stig_corr[tile_id] = {}
                         # utils.log_info('CTRL', f'tile key: {tile_id}, Sh: {self.slice_counter} : {sharpness}')

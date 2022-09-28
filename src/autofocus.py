@@ -88,12 +88,13 @@ class Autofocus():
         self.mapfost_stig_scale = json.loads(self.cfg['autofocus']['mapfost_astig_scaling'])
 
         # Automated Focus/Stigmator Series
-        self.afss_wd_delta = 500e-9  # WD perturbation = 500nm
-        self.afss_stig_x_delta = 0.1  # percent
-        self.afss_stig_y_delta = 0.1  # percent
-        self.afss_rounds = 3  # number of induced focus/stig deviations -1 (zero dev in the middle)
-        self.afss_current_round = 0  # position of current WD/stig deviation within AFSS series
-        self.afss_offset = 1  # skip N slices before first AFSS activation
+        self.afss_wd_delta = json.loads(self.cfg['autofocus']['afss_wd_delta'])
+        self.afss_stig_x_delta = json.loads(self.cfg['autofocus']['afss_stig_x_delta'])  # percent
+        self.afss_stig_y_delta = json.loads(self.cfg['autofocus']['afss_stig_y_delta'])  # percent
+        # number of induced focus/stig deviations -1
+        self.afss_rounds = json.loads(self.cfg['autofocus']['afss_rounds'])
+        self.afss_current_round = 0   # position of current WD/stig deviation within AFSS series # TODO:impelement switch that will not reset the series when acquisition has been paused
+        self.afss_offset = json.loads(self.cfg['autofocus']['afss_offset'])  # skip N slices before first AFSS activation
         self.afss_next_activation = 0  # slice nr of nearest planned AFSS run
         self.afss_wd_stig_orig = {}  # original values before the AFSS started
         self.afss_perturbation_series = []  # series that holds factors by which is the wd/stig delta multiplied
@@ -118,6 +119,11 @@ class Autofocus():
             self.heuristic_calibration)
         self.cfg['autofocus']['heuristic_rot_scale'] = str(
             [self.rot_angle, self.scale_factor])
+        self.cfg['autofocus']['afss_wd_delta'] = str(self.afss_wd_delta)
+        self.cfg['autofocus']['afss_stig_x_delta'] = str(self.afss_stig_x_delta)
+        self.cfg['autofocus']['afss_stig_y_delta'] = str(self.afss_stig_y_delta)
+        self.cfg['autofocus']['afss_rounds'] = str(self.afss_rounds)
+        self.cfg['autofocus']['afss_offset'] = str(self.afss_offset)
 
     # ================ Below: methods for Automated focus/stig series method ==================
 
@@ -182,7 +188,7 @@ class Autofocus():
         #  get list of WD or Stig perturbations to be used in automated focus/stig series
         n_items = self.afss_rounds
         #  self.afss_perturbation_series = np.linspace(-n_items / 2, n_items / 2, n_items + 1)
-        self.afss_perturbation_series = np.linspace(-1, 1, self.afss_rounds+1)
+        self.afss_perturbation_series = np.linspace(-1, 1, self.afss_rounds)
 
     def reset_afss_series(self, grid_index):  # TODO: more explanationatory name
         # TODO check what if there are multiple grids with ref tiles (possibly also if inactivated grids)
