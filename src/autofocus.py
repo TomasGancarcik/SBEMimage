@@ -91,10 +91,11 @@ class Autofocus():
         self.afss_wd_delta = json.loads(self.cfg['autofocus']['afss_wd_delta'])
         self.afss_stig_x_delta = json.loads(self.cfg['autofocus']['afss_stig_x_delta'])  # percent
         self.afss_stig_y_delta = json.loads(self.cfg['autofocus']['afss_stig_y_delta'])  # percent
-        # number of induced focus/stig deviations -1
+        # number of induced focus/stig deviations
         self.afss_rounds = json.loads(self.cfg['autofocus']['afss_rounds'])
-        self.afss_current_round = 0   # position of current WD/stig deviation within AFSS series # TODO:impelement switch that will not reset the series when acquisition has been paused
-        self.afss_offset = json.loads(self.cfg['autofocus']['afss_offset'])  # skip N slices before first AFSS activation
+        self.afss_current_round = 0  # position of current WD/stig deviation within AFSS series # TODO:impelement switch that will not reset the series when acquisition has been paused
+        self.afss_offset = json.loads(
+            self.cfg['autofocus']['afss_offset'])  # skip N slices before first AFSS activation
         self.afss_next_activation = 0  # slice nr of nearest planned AFSS run
         self.afss_wd_stig_orig = {}  # original values before the AFSS started
         self.afss_perturbation_series = []  # series that holds factors by which is the wd/stig delta multiplied
@@ -130,6 +131,18 @@ class Autofocus():
     # def store_wd_stig_before_afss(self, grid_index, tile_index):
     #     for tile in self.gm[]
 
+    def afss_new_vals_verified(self):
+        # Check that all new WDs and Stigmator values of ref. tiles are below WD/Stig thresholds
+        is_below = True
+        diff_sx, diff_sy = 0, 0
+        for tile_key in self.afss_wd_stig_corr_optima:
+            diff_wd = abs(self.afss_wd_stig_corr_optima[tile_key] - self.afss_wd_stig_orig[tile_key])
+            # diff_sx = self.afss_wd_stig_corr_optima[tile_key] # TODO
+            # diff_sy = self.afss_wd_stig_corr_optima[tile_key] # TODO
+            is_below &= (diff_wd <= self.max_wd_diff and diff_sx <= self.max_stig_x_diff
+                         and diff_sy <= self.max_stig_y_diff)
+        return is_below
+
     def process_afss_series(self, mode_focus=False, mode_stigX=False, mode_stigY=False, plot_results=False):
         # print(self.afss_wd_stig_corr)
         for tile_key in self.afss_wd_stig_corr:
@@ -153,7 +166,7 @@ class Autofocus():
             #     print('cfs:', cfs)
 
             # SPLINE INTERPOLATION
-            #x_vals, y_vals = x_vals[::-1], y_vals[::-1]   # reverse order as iterating through dict above is reversed
+            # x_vals, y_vals = x_vals[::-1], y_vals[::-1]   # reverse order as iterating through dict above is reversed
             f1 = interp1d(x_vals, y_vals, kind='cubic')
             x_new = np.linspace(min(x_vals), max(x_vals), num=101, endpoint=True)
             opt = x_new[np.argmax(f1(x_new))]
@@ -173,14 +186,14 @@ class Autofocus():
             opt = self.afss_wd_stig_corr_optima[tile_key]
             self.gm[g][t].wd = opt
             # TODO
-            #self.gm[g][t].wd = self.afss_wd_stig_corr_optima[tile_key][0]
-            #self.gm[g][t].stig_xy[0] += self.afss_wd_stig_corr[tile_key][1]
-            #self.gm[g][t].stig_xy[1] += self.afss_wd_stig_corr[tile_key][2]
+            # self.gm[g][t].wd = self.afss_wd_stig_corr_optima[tile_key][0]
+            # self.gm[g][t].stig_xy[0] += self.afss_wd_stig_corr[tile_key][1]
+            # self.gm[g][t].stig_xy[1] += self.afss_wd_stig_corr[tile_key][2]
 
     def update_afss_wd_stig_orig(self, tile_key, value):
         self.afss_wd_stig_orig[tile_key] = value
 
-    def reset_afss_corrections(self): # TODO: merge with 'reset_afss_series' ?
+    def reset_afss_corrections(self):  # TODO: merge with 'reset_afss_series' ?
         self.afss_wd_stig_corr = {}
         self.afss_wd_stig_corr_optima = {}
 

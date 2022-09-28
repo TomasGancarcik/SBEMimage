@@ -210,7 +210,7 @@ Errors = {
     Error.tile_image_compare: 'Tile image error (slice-by-slice comparison)',
     Error.autofocus_smartsem: 'Autofocus error (SmartSEM)',
     Error.autofocus_heuristic: 'Autofocus error (heuristic)',
-    Error.autofocus_afss: 'Autofocus error (Automated Focus/Stig series)',
+    Error.autofocus_afss: 'Autofocus error (Automated Focus/Stig series)', # TODO
     Error.wd_stig_difference: 'WD/STIG difference error',
     Error.metadata_server: 'Metadata server error',
 

@@ -1208,35 +1208,45 @@ class Acquisition:
 
             # Processing of the Automated Focus/Stigmator series
             elif self.do_afss_corrections:
-                utils.log_info('AFSS', 'Applying corrections to WD/STIG:')
-                self.add_to_main_log('AFSS: Applying corrections to WD/STIG.')
                 self.autofocus.process_afss_series()
-                self.autofocus.apply_afss_corrections()
+                utils.log_info('AFSS', 'AFSS series processed. Checking corrections ...')
+                self.add_to_main_log('AFSS series recorded. Checking corrections ...')
+                if self.autofocus.afss_new_vals_verified():
+                    utils.log_info('AFSS', 'AFSS corrections passed thresholding tests.')
+                    self.add_to_main_log('AFSS corrections passed thresholding tests.')
+                    self.autofocus.apply_afss_corrections()
+                    utils.log_info('AFSS', 'Applying corrections to WD/STIG:')
+                    self.add_to_main_log('AFSS: Applying corrections to WD/STIG.')
+                    # TODO consider moving this for loop into self.autofocus.apply_afss_corrections()
+                    for tile_key in self.autofocus.afss_wd_stig_corr_optima:
+                        corr_val = (self.autofocus.afss_wd_stig_corr_optima[tile_key] -
+                                    self.autofocus.afss_wd_stig_orig[tile_key]
+                                    )*1000000
+                        self.autofocus.update_afss_wd_stig_orig(tile_key, self.autofocus.afss_wd_stig_corr_optima[tile_key])
+                        self.add_to_main_log(f'AFSS: Tile: {tile_key}, delta_WD = {round(corr_val,3)} um.')
+                        utils.log_info('AFSS', f'Tile: {tile_key}, delta WD = {round(corr_val,3)} um.')
 
-                for tile_key in self.autofocus.afss_wd_stig_corr_optima:
-                    corr_val = (self.autofocus.afss_wd_stig_corr_optima[tile_key] -
-                                self.autofocus.afss_wd_stig_orig[tile_key]
-                                )*1000000
-                    self.autofocus.update_afss_wd_stig_orig(tile_key, self.autofocus.afss_wd_stig_corr_optima[tile_key])
-                    utils.log_info('AFSS', f'Tile: {tile_key}, delta WD = {round(corr_val,3)} um.')
-                    self.add_to_main_log(f'AFSS: Tile: {tile_key}, delta_WD = {round(corr_val,3)} um.')
+                    self.autofocus.afss_next_activation += self.autofocus.interval
+                    self.add_to_main_log(f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
+                    utils.log_info('AFSS', f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
+                    self.autofocus.afss_active = False
 
-                self.autofocus.afss_next_activation += self.autofocus.interval
-                self.add_to_main_log(
-                    f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
-                utils.log_info(
-                'AFSS', f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
-                self.autofocus.afss_active = False
+                else:
+                    msg = 'Differences in WD/STIG (AFSS) too large. Resetting original values.'
+                    utils.log_info('AFSS', msg)
+                    self.add_to_main_log('AFSS: ' + msg)
+                    for tile_key in self.autofocus.afss_wd_stig_orig:
+                        grid_index, tile_index = map(int, str.split(tile_key, '.'))
+                        self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig[tile_key]
+                    # self.error_state = Error.wd_stig_difference
+                    # self.add_to_incident_log(msg)
+                    self.autofocus.afss_wd_stig_corr = {}
+                    self.autofocus.afss_active = False  #  Why?
+                    self.autofocus.afss_next_activation += self.autofocus.interval
+                    self.add_to_main_log(f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
+                    utils.log_info('AFSS', f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
 
-                #self.autofocus.plot_afss_series(self.tile)
-                # # If there were jumps in WD/STIG above the allowed thresholds
-                # # (error 507), add message to the log.
-                # if self.error_state == Error.wd_stig_difference:
-                #      utils.log_error(
-                #          'CTRL',
-                #          'Error: Differences in WD/STIG (AFSS) too large.')
-                #      self.add_to_main_log(
-                #          'CTRL: Error: Differences in WD/STIG (AFSS)too large.')
+
             else:
                 # TODO: why is that? all microtomes already wait for completion during do_full_cut.
                 if not self.microtome.device_name == 'GCIB':
@@ -1913,7 +1923,6 @@ class Acquisition:
                 if self.slice_counter == self.autofocus.afss_next_activation:
                     tile_key = f'{grid_index}.{tile_index}'
                     self.autofocus.update_afss_wd_stig_orig(tile_key, self.gm[grid_index][tile_index].wd)
-                    #self.autofocus.afss_wd_stig_orig[tile_key] = self.gm[grid_index][tile_index].wd
                 self.gm[grid_index][tile_index].wd += self.afss_wd_delta
 
                 # # Apply AFSS perturbations for all ref. tiles in active grids
