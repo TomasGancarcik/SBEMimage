@@ -178,17 +178,36 @@ class Autofocus():
             self.afss_wd_stig_corr_optima[tile_key] = opt
         self.afss_wd_stig_corr = {}
 
-    def apply_afss_corrections(self):
-        """Apply individual tile corrections."""
+    def get_average_afss_correction(self):
+        # Function for mode='avg' in apply_afss_corrections
+        diffs = []
         for tile_key in self.afss_wd_stig_corr_optima:
-            g, t = tile_key.split('.')
-            g, t = int(g), int(t)
-            opt = self.afss_wd_stig_corr_optima[tile_key]
-            self.gm[g][t].wd = opt
-            # TODO
-            # self.gm[g][t].wd = self.afss_wd_stig_corr_optima[tile_key][0]
-            # self.gm[g][t].stig_xy[0] += self.afss_wd_stig_corr[tile_key][1]
-            # self.gm[g][t].stig_xy[1] += self.afss_wd_stig_corr[tile_key][2]
+            wd_new = self.afss_wd_stig_corr_optima[tile_key]
+            diffs.append(wd_new - self.afss_wd_stig_orig[tile_key])
+        return np.mean(diffs)
+
+    def apply_afss_corrections(self, mode='avg'):
+        """Apply individual tile corrections."""
+        mode = None
+        # mode = 'avg'  # compute average correction from results of all ref.tiles
+        diffs = {}
+        mean_diff = self.get_average_afss_correction()
+        if mode == 'avg':
+            diffs['all'] = mean_diff
+        else:
+            utils.log_info('AFSS', 'Applying corrections to WD/STIG:')
+        for tile_key in self.afss_wd_stig_corr_optima:
+            wd_orig = self.afss_wd_stig_orig[tile_key]
+            g, t = map(int, str.split(tile_key, '.'))
+            if mode == 'avg':
+                self.gm[g][t].wd = mean_diff + wd_orig
+            else:
+                wd_new = self.afss_wd_stig_corr_optima[tile_key]
+                diffs[tile_key] = wd_new - wd_orig
+                self.gm[g][t].wd = wd_new
+            # Update original values by new results
+            self.afss_wd_stig_orig[tile_key] = self.gm[g][t].wd
+        return diffs, mode
 
     def update_afss_wd_stig_orig(self, tile_key, value):
         self.afss_wd_stig_orig[tile_key] = value

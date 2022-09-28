@@ -1209,23 +1209,20 @@ class Acquisition:
             # Processing of the Automated Focus/Stigmator series
             elif self.do_afss_corrections:
                 self.autofocus.process_afss_series()
-                utils.log_info('AFSS', 'AFSS series processing.')
-                self.add_to_main_log('AFSS series processing.')
+                utils.log_info('AFSS', 'Processing series.')
+                self.add_to_main_log('AFSS: Processing series.')
                 if self.autofocus.afss_new_vals_verified():  # AFSS corrections passed thresholding tests:
-                    self.autofocus.apply_afss_corrections()
-                    utils.log_info('AFSS', 'Applying corrections to WD/STIG:')
-                    self.add_to_main_log('AFSS: Applying corrections to WD/STIG.')
-                    # TODO consider moving this for loop into self.autofocus.apply_afss_corrections()
-                    for tile_key in self.autofocus.afss_wd_stig_corr_optima:
-                        corr_val = (self.autofocus.afss_wd_stig_corr_optima[tile_key] -
-                                    self.autofocus.afss_wd_stig_orig[tile_key]
-                                    )*1000000
-                        self.autofocus.update_afss_wd_stig_orig(tile_key, self.autofocus.afss_wd_stig_corr_optima[tile_key])
-                        self.add_to_main_log(f'AFSS: Tile: {tile_key}, delta_WD = {round(corr_val,3)} um.')
-                        utils.log_info('AFSS', f'Tile: {tile_key}, delta WD = {round(corr_val,3)} um.')
-
+                    diffs, mode = self.autofocus.apply_afss_corrections()
+                    if mode == 'avg':
+                        mean_diff = diffs['all']
+                        utils.log_info('AFSS', f'Applying average correction: {round(mean_diff * 10 ** 6, 3)} um')
+                        self.add_to_main_log(f'AFSS: Applying average correction: {round(mean_diff * 10 ** 6, 3)} um')
+                    else:
+                        for tile_key in diffs:
+                            utils.log_info('AFSS', f'Tile: {tile_key}, delta WD = {round(diffs[tile_key]* 10 ** 6, 3)} um.')
+                            self.add_to_main_log(f'AFSS: Tile: {tile_key}, delta_WD = {round(diffs[tile_key]* 10 ** 6, 3)} um.')
                     self.autofocus.afss_next_activation += self.autofocus.interval
-                    self.add_to_main_log(f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
+                    self.add_to_main_log(f'AFSS: Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
                     utils.log_info('AFSS', f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
                     self.autofocus.afss_active = False
 
@@ -1239,11 +1236,10 @@ class Acquisition:
                     # self.error_state = Error.wd_stig_difference
                     # self.add_to_incident_log(msg)
                     self.autofocus.afss_wd_stig_corr = {}
-                    self.autofocus.afss_active = False  #  Why?
                     self.autofocus.afss_next_activation += self.autofocus.interval
-                    self.add_to_main_log(f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
+                    self.add_to_main_log(f'AFSS: Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
                     utils.log_info('AFSS', f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
-
+                    self.autofocus.afss_active = False
 
             else:
                 # TODO: why is that? all microtomes already wait for completion during do_full_cut.
