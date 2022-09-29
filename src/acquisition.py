@@ -1925,7 +1925,15 @@ class Acquisition:
 
         series_active = self.autofocus.afss_next_activation \
                         <= self.slice_counter \
-                        <= self.autofocus.afss_next_activation + self.autofocus.afss_rounds  
+                        <= self.autofocus.afss_next_activation + self.autofocus.afss_rounds
+
+        sx_series_active = self.autofocus.afss_next_activation + self.autofocus.afss_rounds \
+                        <= self.slice_counter \
+                        <= self.autofocus.afss_next_activation + 2*self.autofocus.afss_rounds
+
+        sy_series_active = self.autofocus.afss_next_activation + 2*self.autofocus.afss_rounds \
+                        <= self.slice_counter \
+                        <= self.autofocus.afss_next_activation + 3*self.autofocus.afss_rounds
 
         self.autofocus.afss_active = self.use_autofocus and self.autofocus.method == 4 and series_active
 
@@ -1936,12 +1944,12 @@ class Acquisition:
         mode_stig_y = False
         if self.autofocus.afss_active:
            # Compute focus/stig perturbations according to current slice
-            self.autofocus.get_afss_perturbations()  # series of multiplication factors
-           # TODO: consider renaming as these are only multiplication factors
+            self.autofocus.get_afss_factors()  # series of multiplication factors
             self.autofocus.afss_current_round = self.slice_counter - self.autofocus.afss_next_activation
             fct = self.autofocus.afss_perturbation_series[self.autofocus.afss_current_round]
-            # self.afss_wd_delta = self.autofocus.afss_wd_delta * fct
-            self.afss_deltas = fct * self.autofocus.afss_deltas
+            self.afss_deltas = fct * np.asarray((self.autofocus.afss_wd_delta,
+                                                self.autofocus.afss_stig_x_delta,
+                                                self.autofocus.afss_stig_y_delta))
             self.afss_wd_delta = self.afss_deltas[0]  # TODO: remove
 
             # Apply AFSS perturbations for all ref. tiles in active grids

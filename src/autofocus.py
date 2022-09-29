@@ -101,9 +101,9 @@ class Autofocus():
         self.afss_wd_stig_corr = {}  # values of Automated focus-stigmator series 
         self.afss_wd_stig_corr_optima = {}  # Computed corrections for automated focus-stigmator series
         self.afss_active = False
-        self.afss_deltas = np.asarray([self.afss_wd_delta, self.afss_stig_x_delta, self.afss_stig_y_delta])
+        # self.afss_deltas = np.asarray([self.afss_wd_delta, self.afss_stig_x_delta, self.afss_stig_y_delta])
         self.afss_wd_stig_orig_full = {}  # original values before the AFSS started
-        self.afss_mode = 'stig_y'  # 'focus' 'stig_x' 'stig_y'
+        self.afss_mode = 'stig_x'  # 'focus' 'stig_x' 'stig_y'
         self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
 
 
@@ -133,7 +133,7 @@ class Autofocus():
 
     # ================ Below: methods for Automated focus/stig series method ==================
 
-    def get_afss_perturbations(self):
+    def get_afss_factors(self):
         #  get list of WD or Stig perturbations to be used in automated focus/stig series
         self.afss_perturbation_series = np.linspace(-1, 1, self.afss_rounds)
 
@@ -208,10 +208,8 @@ class Autofocus():
                 diffs.append(opt - self.afss_wd_stig_orig_full[tile_key][0])
             elif mode == 'stig_x':
                 diffs.append(opt - self.afss_wd_stig_orig_full[tile_key][1][0])
-                utils.log_info('AFSS', f'mean stig_x_diff: {round(np.mean(diffs), 3)}')
             elif mode == 'stig_y':
                 diffs.append(opt - self.afss_wd_stig_orig_full[tile_key][1][1])
-                utils.log_info('AFSS', f'mean stig_y_diff: {round(np.mean(diffs), 3)}')
             else:
                 utils.log_info('AFSS', 'Error in getting average afss correction. Make sure that mode is set!')
                 return None
@@ -227,7 +225,9 @@ class Autofocus():
         # mode = 'Average'  # compute average correction from results of all ref.tiles
         diffs = {}
         msgs = {}
-        mean_diff = self.get_average_afss_correction()
+        mean_diff = None
+        if avg_mode == 'Average':
+            mean_diff = self.get_average_afss_correction()
 
         for tile_key in self.afss_wd_stig_corr_optima:
             g, t = map(int, str.split(tile_key, '.'))
