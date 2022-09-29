@@ -3162,17 +3162,19 @@ class AutofocusSettingsDlg(QDialog):
             self.autofocus.heuristic_calibration[2])
         self.doubleSpinBox_stigRot.setValue(self.autofocus.rot_angle)
         self.doubleSpinBox_stigScale.setValue(self.autofocus.scale_factor)
+
         # For Automated Focus/Stigmator series:
         self.spinBox_afss_interval.setValue(self.autofocus.interval)  # shared with SEM autofocus
         self.spinBox_afss_autostigDelay.setValue(self.autofocus.autostig_delay)  # shared with SEM autofocus
         self.spinBox_afss_offset.setValue(self.autofocus.afss_offset)
-        self.doubleSpinBox_afss_wdDiff.setValue(
-            self.autofocus.afss_wd_delta * 1000000)
-        self.doubleSpinBox_afss_stigXDiff.setValue(
-            self.autofocus.afss_stig_x_delta)
-        self.doubleSpinBox_afss_stigYDiff.setValue(
-            self.autofocus.afss_stig_y_delta)
+        self.doubleSpinBox_afss_wdDiff.setValue(self.autofocus.afss_wd_delta * 1000000)
+        self.doubleSpinBox_afss_stigXDiff.setValue(self.autofocus.afss_stig_x_delta)
+        self.doubleSpinBox_afss_stigYDiff.setValue(self.autofocus.afss_stig_y_delta)
         self.spinBox_afss_rounds.setValue(self.autofocus.afss_rounds)
+        self.comboBox_afss_consensus_mode.addItems(['Average', 'Specific'])
+        self.comboBox_afss_consensus_mode.setCurrentIndex(self.autofocus.afss_consensus_mode)
+        # self.comboBox_consensus_mode.currentIndexChanged.connect(self.change_consensus_mode)
+
         # Disable some settings if MagC mode is active
         if magc_mode:
             self.radioButton_useHeuristic.setEnabled(False)
@@ -3240,6 +3242,10 @@ class AutofocusSettingsDlg(QDialog):
         else:
             self.lineEdit_refTiles.setEnabled(True)
 
+    # def change_consensus_mode(self):
+    #     if self.comboBox_consensus_mode.currentIndex() == 1
+    #
+
     def accept(self):
         error_str = ''
         if self.radioButton_useSmartSEM.isChecked():
@@ -3281,6 +3287,7 @@ class AutofocusSettingsDlg(QDialog):
         self.autofocus.afss_stig_y_delta = self.doubleSpinBox_afss_stigYDiff.value()
         self.autofocus.afss_rounds = self.spinBox_afss_rounds.value()
         self.autofocus.afss_offset = self.spinBox_afss_offset.value()
+        self.autofocus.afss_consensus_mode = self.comboBox_afss_consensus_mode.currentIndex()
         # Heuristic + Mapfost
         self.autofocus.heuristic_calibration = [
             self.doubleSpinBox_focusCalib.value(),

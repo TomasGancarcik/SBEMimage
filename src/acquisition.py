@@ -23,6 +23,8 @@ import math
 
 from time import sleep, time
 from statistics import mean
+
+import numpy as np
 from imageio import imwrite
 from dateutil.relativedelta import relativedelta
 from PyQt5.QtWidgets import QMessageBox
@@ -631,6 +633,7 @@ class Acquisition:
             # wd and stig deviations, needed for
             # automated focus/stig series, otherwise set to 0
             self.afss_wd_delta, self.afss_stig_x_delta, self.afss_stig_y_delta = 0, 0, 0
+            self.afss_deltas = [0, 0, 0]
             # List of tiles to be processed for AFSS during the cut cycle
             self.do_afss_corrections = False
             # Reset AFSS corrections
@@ -1012,13 +1015,15 @@ class Acquisition:
             utils.log_info('CTRL', 'Stack paused.')
             self.add_to_main_log('CTRL: Stack paused.')
             # reset AFSS series and set original WD/Stig to reference tiles if stack pause during AFSS run
-            if self.autofocus.afss_active and self.autofocus.afss_wd_stig_orig:  # the second condition is probably
+            if self.autofocus.afss_active and self.autofocus.afss_wd_stig_orig_full:  # the second condition is probably
                 # redundant
                 utils.log_info('AFSS:', 'Resetting original WD/Stig values to reference tiles.')
                 self.add_to_main_log('AFSS: Resetting original WD/Stig values to reference tiles.')
                 # for grid_index in range(self.gm.number_grids):
                 #     self.autofocus.reset_afss_series(grid_index)
-                self.autofocus.reset_afss_series(grid_index)
+                # self.autofocus.reset_afss_series(grid_index)
+                self.autofocus.reset_afss_series()
+                self.autofocus.reset_afss_corrections()
             # for AFSS delay purposes
             self.autofocus.afss_next_activation = self.slice_counter + self.autofocus.afss_offset
 
@@ -1208,36 +1213,53 @@ class Acquisition:
 
             # Processing of the Automated Focus/Stigmator series
             elif self.do_afss_corrections:
+                # Compute corrections
                 self.autofocus.process_afss_series()
                 utils.log_info('AFSS', 'Processing series.')
                 self.add_to_main_log('AFSS: Processing series.')
                 if self.autofocus.afss_new_vals_verified():  # AFSS corrections passed thresholding tests:
-                    afss_mode = 'tile_specific'  # or 'avg' for averaging over all corrections
-                    diffs = self.autofocus.apply_afss_corrections(mode=afss_mode)
-                    if afss_mode == 'avg':
-                        mean_diff = round(diffs[afss_mode] * 10 ** 6, 3)
-                        utils.log_info('AFSS', f'Applying average correction: {mean_diff} um')
-                        self.add_to_main_log(f'AFSS: Applying average correction: {mean_diff} um')
-                    elif afss_mode == 'tile_specific':
-                        for tile_key in diffs:
-                            val = round(diffs[tile_key]* 10 ** 6, 3)
-                            utils.log_info('AFSS', f'Tile: {tile_key}, delta WD = {val} um.')
-                            self.add_to_main_log(f'AFSS: Tile: {tile_key}, delta_WD = {val} um.')
+                    # Apply corrections to tracked tiles
+                    mean_diff, diffs, log_msgs = self.autofocus.apply_afss_corrections()
+
+                    # Log info about results of either focus or Stigmator series
+                    if self.autofocus.afss_consensus_mode == 0:  # mode 'Average' over all tracked tiles
+                        if self.autofocus.afss_mode == 'focus':
+                            msg = f'Applying average WD correction {round(mean_diff * 10 ** 6, 3)} um to all tracked tiles.'
+                            utils.log_info('AFSS', msg)
+                            self.add_to_main_log('AFSS' + msg)
+                        elif self.autofocus.afss_mode == 'stig_x':
+                            msg = f'Applying average StigX correction {mean_diff} % to all tracked tiles.'
+                            utils.log_info('AFSS', msg)
+                            self.add_to_main_log('ASFF' + msg)
+                        elif self.autofocus.afss_mode == 'stig_y':
+                            msg = f'Applying average StigY correction {mean_diff} % to all tracked tiles.'
+                            utils.log_info('AFSS', msg)
+                            self.add_to_main_log('ASFF' + msg)
+
+                    for tile_key in log_msgs:
+                        msg = log_msgs[tile_key]
+                        self.add_to_main_log(msg)
+                        utils.log_info(msg.split(':')[0], msg.split(':')[1][1:])
+
                     self.autofocus.afss_next_activation += self.autofocus.interval
                     self.add_to_main_log(f'AFSS: Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
                     utils.log_info('AFSS', f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
+                    self.autofocus.reset_afss_corrections()
                     self.autofocus.afss_active = False
 
                 else:
                     msg = 'Differences in WD/STIG (AFSS) too large. Resetting original values.'
                     utils.log_info('AFSS', msg)
                     self.add_to_main_log('AFSS: ' + msg)
-                    for tile_key in self.autofocus.afss_wd_stig_orig:
-                        grid_index, tile_index = map(int, str.split(tile_key, '.'))
-                        self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig[tile_key]
+                    # for tile_key in self.autofocus.afss_wd_stig_orig:
+                    # for tile_key in self.autofocus.afss_wd_stig_orig_full:
+                    #     grid_index, tile_index = map(int, str.split(tile_key, '.'))
+                    #     # self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig[tile_key]
+                    #     self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig_full[tile_key][0]
                     # self.error_state = Error.wd_stig_difference
                     # self.add_to_incident_log(msg)
-                    self.autofocus.afss_wd_stig_corr = {}
+                    self.autofocus.reset_afss_series()
+                    self.autofocus.reset_afss_corrections()
                     self.autofocus.afss_next_activation += self.autofocus.interval
                     self.add_to_main_log(f'AFSS: Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
                     utils.log_info('AFSS', f'Next Focus/Stig run will be triggered at slice {self.autofocus.afss_next_activation}')
@@ -1888,7 +1910,8 @@ class Acquisition:
                 self.do_autofocus_before_grid_acq(grid_index)
             self.gm.fit_apply_aberration_gradient()
 
-        ####  AFSS #####
+        ####     AFSS     #####
+
         # For Automated Focus/Stigmator series (method 4), apply the WD or Stigmator perturbations
         self.do_afss_corrections = False
         ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
@@ -1897,29 +1920,52 @@ class Acquisition:
         # stack restart happens after some afss reference tile has already been imaged
         if self.autofocus.afss_offset == 0 and any(x in self.tiles_acquired for x in ref_tiles):
             self.autofocus.afss_next_activation += 1
-            utils.log_info('CTRL', 'AFSS activation postponed to the next slice (some ref.tiles already imaged.')
-            self.add_to_main_log('CTRL: AFSS activation postponed to the next slice (some ref.tiles already imaged.')
+            utils.log_info('CTRL', 'AFSS activation postponed to the next slice (some ref.tiles already imaged).')
+            self.add_to_main_log('CTRL: AFSS activation postponed to the next slice (some ref.tiles already imaged).')
 
         series_active = self.autofocus.afss_next_activation \
                         <= self.slice_counter \
-                        <= self.autofocus.afss_next_activation + self.autofocus.afss_rounds  # TODO remove  +1
+                        <= self.autofocus.afss_next_activation + self.autofocus.afss_rounds  
+
         self.autofocus.afss_active = self.use_autofocus and self.autofocus.method == 4 and series_active
 
         # Perform AFSS run and correct iteration within run
+        if self.autofocus.afss_mode == 'mode_focus':
+            mode_focus = True
+        mode_stig_x = False
+        mode_stig_y = False
         if self.autofocus.afss_active:
-            self.autofocus.get_afss_perturbations()  # series of deltas TODO: consider renaming as these are only multiplication factors
-            # Compute focus/stig perturbations according to current slice
+           # Compute focus/stig perturbations according to current slice
+            self.autofocus.get_afss_perturbations()  # series of multiplication factors
+           # TODO: consider renaming as these are only multiplication factors
             self.autofocus.afss_current_round = self.slice_counter - self.autofocus.afss_next_activation
             fct = self.autofocus.afss_perturbation_series[self.autofocus.afss_current_round]
-            self.afss_wd_delta = self.autofocus.afss_wd_delta * fct
+            # self.afss_wd_delta = self.autofocus.afss_wd_delta * fct
+            self.afss_deltas = fct * self.autofocus.afss_deltas
+            self.afss_wd_delta = self.afss_deltas[0]  # TODO: remove
 
             # Apply AFSS perturbations for all ref. tiles in active grids
             for tile_index in ref_tiles:
-                # Store original WDs at the beginning of series
+                tile_key = f'{grid_index}.{tile_index}'
+
+                # Store original WDs and Stigmator settings at the beginning of series
                 if self.slice_counter == self.autofocus.afss_next_activation:
-                    tile_key = f'{grid_index}.{tile_index}'
-                    self.autofocus.update_afss_wd_stig_orig(tile_key, self.gm[grid_index][tile_index].wd)
-                self.gm[grid_index][tile_index].wd += self.afss_wd_delta
+                    # self.autofocus.update_afss_wd_stig_orig(tile_key, self.gm[grid_index][tile_index].wd)
+                    wd = self.gm[grid_index][tile_index].wd
+                    stig_xy = np.asarray(self.gm[grid_index][tile_index].stig_xy)
+                    self.autofocus.afss_wd_stig_orig_full[tile_key] = [wd, stig_xy]
+
+                if self.autofocus.afss_mode == 'focus':
+                    #
+                    self.gm[grid_index][tile_index].wd += self.afss_deltas[0]
+                elif self.autofocus.afss_mode == 'stig_x':
+                    delta_stig = np.asarray((self.afss_deltas[1], 0))
+                    new_stig_xy = np.asarray(self.gm[grid_index][tile_index].stig_xy) + delta_stig
+                    self.gm[grid_index][tile_index].stig_xy = new_stig_xy
+                elif self.autofocus.afss_mode == 'stig_y':
+                    delta_stig = np.asarray((0, self.afss_deltas[1]))
+                    new_stig_xy = np.asarray(self.gm[grid_index][tile_index].stig_xy) + delta_stig
+                    self.gm[grid_index][tile_index].stig_xy = new_stig_xy
 
                 # # Apply AFSS perturbations for all ref. tiles in active grids
                 # for grid_index in range(self.gm.number_grids):
@@ -1931,11 +1977,15 @@ class Acquisition:
                 #                 tile_key = f'{grid_index}.{tile_index}'
                 #                 self.autofocus.afss_wd_stig_orig[tile_key] = self.gm[grid_index][tile_index].wd
                 #             self.gm[grid_index][tile_index].wd += self.afss_wd_delta
-
-            utils.log_info('CTRL', f'Automated Focus/Stigmator series active ({self.autofocus.afss_current_round +1}/{self.autofocus.afss_rounds})')
-            utils.log_info('CTRL', 'AFSS: delta wd = {0:+.3f} um'.format(self.afss_wd_delta*1000000))
-            self.add_to_main_log(f'CTRL: Automated Focus/Stigmator series active ({self.autofocus.afss_current_round +1}/{self.autofocus.afss_rounds})')
-            self.add_to_main_log('CTRL: AFSS: DELTA_WD: {0:+.3f} um.'.format(self.afss_wd_delta*1000000))
+            utils.log_info('CTRL', f'Automated Focus/Stigmator series active ({self.autofocus.afss_current_round + 1}/{self.autofocus.afss_rounds})')
+            if self.autofocus.afss_mode == 'focus':
+                utils.log_info('CTRL', 'AFSS: delta wd = {0:+.3f} um'.format(self.afss_wd_delta*1000000))
+                self.add_to_main_log(f'CTRL: Automated Focus/Stigmator series active ({self.autofocus.afss_current_round +1}/{self.autofocus.afss_rounds})')
+                self.add_to_main_log('CTRL: AFSS: DELTA_WD: {0:+.3f} um.'.format(self.afss_wd_delta*1000000))
+            elif self.autofocus.afss_mode == 'stig_x' or 'stig_y':
+                utils.log_info('CTRL', f'AFSS: delta stig: {delta_stig} %')
+                self.add_to_main_log(f'CTRL: Automated Focus/Stigmator series active ({self.autofocus.afss_current_round +1}/{self.autofocus.afss_rounds})')
+                self.add_to_main_log(f'AFSS: delta stig: {delta_stig} %')
 
             # Process entire set of focus/stig series after series were acquired ('do_cut' method)
             #  TODO: Following if should also have a binary condition check for successful
@@ -2282,7 +2332,10 @@ class Acquisition:
                 ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
                 for tile_index in ref_tiles:
                     key = f'{grid_index}.{tile_index}'
-                    self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig[key]
+                    # self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig[key]
+                    self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig_full[key][0]
+                    self.gm[grid_index][tile_index].stig_xy = self.autofocus.afss_wd_stig_orig_full[key][1]
+
 
     def acquire_tile(self, grid_index, tile_index,
                      adjust_wd_stig=False, adjust_acq_settings=False):
@@ -2588,14 +2641,20 @@ class Acquisition:
                                 self.add_to_main_log(
                                     'CTRL: Tile above mean/SD slice-by-slice '
                                     'thresholds.')
-                    # AFSS: add sharpness value of current tile to the correction series:
+                    # AFSS: Add sharpness value of current tile to the correction series:
                     #  correction series = {tile_id: {slice_nr: (tile_wd, sharpness)}
                     ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
                     if tile_accepted and tile_index in ref_tiles:
                         if tile_id not in self.autofocus.afss_wd_stig_corr:
                             self.autofocus.afss_wd_stig_corr[tile_id] = {}
-                        # utils.log_info('CTRL', f'tile key: {tile_id}, Sh: {self.slice_counter} : {sharpness}')
-                        entry = {self.slice_counter: (self.gm[grid_index][tile_index].wd, sharpness)}
+                        ## utils.log_info('CTRL', f'tile key: {tile_id}, Sh: {self.slice_counter} : {sharpness}')
+                        # entry = {self.slice_counter: (self.gm[grid_index][tile_index].wd, sharpness)}
+                        # self.autofocus.afss_wd_stig_corr[tile_id].update(entry)
+
+                        entry = {self.slice_counter: (self.gm[grid_index][tile_index].wd,
+                                                      self.gm[grid_index][tile_index].stig_xy,
+                                                      sharpness)}
+
                         self.autofocus.afss_wd_stig_corr[tile_id].update(entry)
                 else:
                     # Tile image file could not be loaded

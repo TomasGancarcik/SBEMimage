@@ -770,21 +770,28 @@
      <string>Number of WD/Stig perturbations:</string>
     </property>
    </widget>
-   <widget class="QRadioButton" name="radioButton_afss_reserved">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>240</y>
-     <width>251</width>
-     <height>17</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>AFSS reserved button</string>
-   </property>
-   <property name="checked">
-    <bool>false</bool>
-   </property>
+   <widget class="QComboBox" name="comboBox_afss_consensus_mode">
+    <property name="geometry">
+     <rect>
+      <x>130</x>
+      <y>240</y>
+      <width>151</width>
+      <height>22</height>
+     </rect>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_afss_consensus_mode">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>240</y>
+      <width>105</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Consensus mode:</string>
+    </property>
    </widget>
   </widget>
   <widget class="QGroupBox" name="groupBox">
