@@ -544,7 +544,7 @@
      </rect>
     </property>
     <property name="text">
-     <string>Interval N (refocus every N slices):</string>
+     <string>Interval N (Focus/StigX/StigY):</string>
     </property>
    </widget>
    <widget class="QSpinBox" name="spinBox_afss_interval">
@@ -595,7 +595,7 @@
      </rect>
     </property>
     <property name="text">
-     <string>Autostig delay (slices):</string>
+     <string>Autostig switch:</string>
     </property>
    </widget>
    <widget class="QLabel" name="label_afss_autostig_disable">
