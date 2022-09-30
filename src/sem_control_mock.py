@@ -236,10 +236,13 @@ class SEM_Mock(SEM):
             mock_image_name = "_".join([mock_stack_name, grid_id, tile_id, slice_no])
             mock_image_path = os.path.join(self.previous_acq_dir, "tiles", grid_id, tile_id, mock_image_name)
 
+
         if os.path.isfile(mock_image_path):
             mock_image = io.imread(mock_image_path)
             if mock_image.shape == (height, width):
                 return mock_image
+        else:
+            print('mock_image_path not found ...')
 
         return self._generate_random_image(width, height)
 

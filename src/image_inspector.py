@@ -144,6 +144,7 @@ class ImageInspector:
 
             # TODO consider computing sharpness only for tracked tiles
             sharpness = utils._sobel(img)
+            # sharpness = stddev
 
 
             # Was complete image grabbed? Test if first or final line of image

@@ -93,17 +93,15 @@ class Autofocus():
         self.afss_stig_y_delta = json.loads(self.cfg['autofocus']['afss_stig_y_delta'])  # percent
         self.afss_rounds = json.loads(self.cfg['autofocus']['afss_rounds'])  # number of induced focus/stig deviations
         self.afss_current_round = 0  # position of current WD/stig deviation within AFSS series # TODO:impelement switch that will not reset the series when acquisition has been paused
-        self.afss_offset = json.loads(
-            self.cfg['autofocus']['afss_offset'])  # skip N slices before first AFSS activation
+        self.afss_offset = json.loads(self.cfg['autofocus']['afss_offset'])  # skip N slices before first AFSS activation
         self.afss_next_activation = 0  # slice nr of nearest planned AFSS run
         self.afss_wd_stig_orig = {}  # original values before the AFSS started
         self.afss_perturbation_series = []  # series that holds factors by which is the wd/stig delta multiplied
         self.afss_wd_stig_corr = {}  # values of Automated focus-stigmator series 
         self.afss_wd_stig_corr_optima = {}  # Computed corrections for automated focus-stigmator series
         self.afss_active = False
-        # self.afss_deltas = np.asarray([self.afss_wd_delta, self.afss_stig_x_delta, self.afss_stig_y_delta])
         self.afss_wd_stig_orig_full = {}  # original values before the AFSS started
-        self.afss_mode = 'stig_x'  # 'focus' 'stig_x' 'stig_y'
+        self.afss_mode = 'focus'  # 'focus' 'stig_x' 'stig_y'
         self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
 
 
@@ -132,6 +130,19 @@ class Autofocus():
         self.cfg['autofocus']['afss_consensus_mode'] = str(self.afss_consensus_mode)
 
     # ================ Below: methods for Automated focus/stig series method ==================
+
+    def next_afss_mode(self):
+        if self.autostig_delay == -1:
+            self.afss_mode = 'focus'
+        elif self.afss_mode == 'focus':
+            self.afss_mode = 'stig_x'
+        elif self.afss_mode == 'stig_x':
+            self.afss_mode = 'stig_y'
+        elif self.afss_mode == 'stig_y':
+            self.afss_mode = 'focus'
+        else:
+            utils.log_info('Warning: undetected AFSS mode. Next run will be of type: Focus.')
+            self.afss_mode = 'focus'
 
     def get_afss_factors(self):
         #  get list of WD or Stig perturbations to be used in automated focus/stig series
@@ -216,7 +227,7 @@ class Autofocus():
         return np.mean(diffs)
 
     def apply_afss_corrections(self):
-        utils.log_info('AFSS', 'Applying corrections to WD/STIG:')
+        # utils.log_info('AFSS', 'Applying corrections to WD/STIG:')
         consensus_modes = ['Average', 'tile_specific']
         avg_mode = consensus_modes[self.afss_consensus_mode]
         mode = self.afss_mode
