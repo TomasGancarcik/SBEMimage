@@ -2402,6 +2402,9 @@ class PreStackDlg(QDialog):
             if autofocus.method == 3:
                 self.label_autofocusActive.setFont(boldFont)
                 self.label_autofocusActive.setText('Active (MAPFoSt)')
+            if autofocus.method == 4:
+                self.label_autofocusActive.setFont(boldFont)
+                self.label_autofocusActive.setText('Active (AFSS)')
         else:
             self.label_autofocusActive.setText('Inactive')
         if self.gm.wd_gradient_active():
@@ -3092,7 +3095,7 @@ class ImageMonitoringSettingsDlg(QDialog):
 
 class AutofocusSettingsDlg(QDialog):
     """Adjust settings for the ZEISS autofocus, the heuristic autofocus,
-    and tracking the focus/stig when refocusing manually.
+    automated focus/stigmator series, and tracking the focus/stig when refocusing manually.
     """
     def __init__(self, autofocus, grid_manager, magc_mode=False):
         super().__init__()
@@ -3111,10 +3114,13 @@ class AutofocusSettingsDlg(QDialog):
             self.radioButton_useTrackingOnly.setChecked(True)
         elif self.autofocus.method == 3:
             self.radioButton_useMAPFoSt.setChecked(True)
+        elif self.autofocus.method == 4:
+            self.radioButton_useAFSS.setChecked(True)
         self.radioButton_useSmartSEM.toggled.connect(self.group_box_update)
         self.radioButton_useHeuristic.toggled.connect(self.group_box_update)
         self.radioButton_useTrackingOnly.toggled.connect(self.group_box_update)
         self.radioButton_useMAPFoSt.toggled.connect(self.group_box_update)
+        self.radioButton_useAFSS.toggled.connect(self.group_box_update)
         self.group_box_update()
         # General settings
         self.lineEdit_refTiles.setText(
@@ -3157,11 +3163,24 @@ class AutofocusSettingsDlg(QDialog):
         self.doubleSpinBox_stigRot.setValue(self.autofocus.rot_angle)
         self.doubleSpinBox_stigScale.setValue(self.autofocus.scale_factor)
 
+        # For Automated Focus/Stigmator series:
+        self.spinBox_afss_interval.setValue(self.autofocus.interval)  # shared with SEM autofocus
+        self.spinBox_afss_autostigDelay.setValue(self.autofocus.autostig_delay)  # shared with SEM autofocus
+        self.spinBox_afss_offset.setValue(self.autofocus.afss_offset)
+        self.doubleSpinBox_afss_wdDiff.setValue(self.autofocus.afss_wd_delta * 1000000)
+        self.doubleSpinBox_afss_stigXDiff.setValue(self.autofocus.afss_stig_x_delta)
+        self.doubleSpinBox_afss_stigYDiff.setValue(self.autofocus.afss_stig_y_delta)
+        self.spinBox_afss_rounds.setValue(self.autofocus.afss_rounds)
+        self.comboBox_afss_consensus_mode.addItems(['Average', 'Specific'])
+        self.comboBox_afss_consensus_mode.setCurrentIndex(self.autofocus.afss_consensus_mode)
+        # self.comboBox_consensus_mode.currentIndexChanged.connect(self.change_consensus_mode)
+
         # Disable some settings if MagC mode is active
         if magc_mode:
             self.radioButton_useHeuristic.setEnabled(False)
             self.radioButton_useTrackingOnly.setEnabled(False)
             self.radioButton_useMAPFoSt.setEnabled(False)
+            self.radioButton_useAFSS.setEnabled(False)
             self.comboBox_trackingMode.setEnabled(False)
             self.spinBox_interval.setEnabled(False)
             # make autostig interval work on grids instead of slices
@@ -3173,21 +3192,31 @@ class AutofocusSettingsDlg(QDialog):
             zeiss_enabled = True
             heuristic_enabled = False
             diffs_enabled = True
+            afss_enabled = False
         elif self.radioButton_useHeuristic.isChecked():
             zeiss_enabled = False
             heuristic_enabled = True
             diffs_enabled = True
+            afss_enabled = False
         elif self.radioButton_useTrackingOnly.isChecked():
             zeiss_enabled = False
             heuristic_enabled = False
             diffs_enabled = False
+            afss_enabled = False
         elif self.radioButton_useMAPFoSt.isChecked():
             zeiss_enabled = True  # mapfost uses intervall and pixel size value.
             heuristic_enabled = False
             diffs_enabled = True
             mapfost_enabled = True  # TODO: add mapfost parameter group
+            afss_enabled = False
+        elif self.radioButton_useAFSS.isChecked():
+            zeiss_enabled = False
+            heuristic_enabled = False
+            diffs_enabled = True
+            afss_enabled = True
         self.groupBox_ZEISS_af.setEnabled(zeiss_enabled)
         self.groupBox_heuristic_af.setEnabled(heuristic_enabled)
+        self.groupBox_AFSS_af.setEnabled(afss_enabled)
         self.doubleSpinBox_maxWDDiff.setEnabled(diffs_enabled)
         self.doubleSpinBox_maxStigXDiff.setEnabled(diffs_enabled)
         self.doubleSpinBox_maxStigYDiff.setEnabled(diffs_enabled)
@@ -3213,6 +3242,10 @@ class AutofocusSettingsDlg(QDialog):
         else:
             self.lineEdit_refTiles.setEnabled(True)
 
+    # def change_consensus_mode(self):
+    #     if self.comboBox_consensus_mode.currentIndex() == 1
+    #
+
     def accept(self):
         error_str = ''
         if self.radioButton_useSmartSEM.isChecked():
@@ -3223,6 +3256,8 @@ class AutofocusSettingsDlg(QDialog):
             self.autofocus.method = 2
         elif self.radioButton_useMAPFoSt.isChecked():
             self.autofocus.method = 3
+        elif self.radioButton_useAFSS.isChecked():
+            self.autofocus.method = 4
 
         success, tile_list = utils.validate_tile_list(
             self.lineEdit_refTiles.text())
@@ -3244,7 +3279,16 @@ class AutofocusSettingsDlg(QDialog):
         self.autofocus.wd_delta = self.doubleSpinBox_wdDiff.value() / 1000000
         self.autofocus.stig_x_delta = self.doubleSpinBox_stigXDiff.value()
         self.autofocus.stig_y_delta = self.doubleSpinBox_stigYDiff.value()
-
+        # AFSS
+        self.autofocus.interval = self.spinBox_afss_interval.value()
+        self.autofocus.autostig_delay = self.spinBox_afss_autostigDelay.value()
+        self.autofocus.afss_wd_delta = self.doubleSpinBox_afss_wdDiff.value() / 1000000
+        self.autofocus.afss_stig_x_delta = self.doubleSpinBox_afss_stigXDiff.value()
+        self.autofocus.afss_stig_y_delta = self.doubleSpinBox_afss_stigYDiff.value()
+        self.autofocus.afss_rounds = self.spinBox_afss_rounds.value()
+        self.autofocus.afss_offset = self.spinBox_afss_offset.value()
+        self.autofocus.afss_consensus_mode = self.comboBox_afss_consensus_mode.currentIndex()
+        # Heuristic + Mapfost
         self.autofocus.heuristic_calibration = [
             self.doubleSpinBox_focusCalib.value(),
             self.doubleSpinBox_stigXCalib.value(),

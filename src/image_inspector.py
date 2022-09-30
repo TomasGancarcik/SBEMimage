@@ -26,7 +26,10 @@ from PIL.ImageQt import ImageQt
 from PyQt5.QtGui import QPixmap
 
 import utils
+<<<<<<< HEAD
 from utils import sobel
+=======
+>>>>>>> autofocus
 
 # Remove image size limit in PIL (Pillow) to prevent DecompressionBombError
 Image.MAX_IMAGE_PIXELS = None
@@ -43,10 +46,18 @@ class ImageInspector:
         self.gm = grid_manager
         self.tile_means = {}
         self.tile_stddevs = {}
+<<<<<<< HEAD
+=======
+        self.tile_sharpness = {}
+>>>>>>> autofocus
         self.tile_reslice_line = {}
         self.tile_stats = {}
         self.ov_means = {}
         self.ov_stddevs = {}
+<<<<<<< HEAD
+=======
+        self.ov_sharpness = {}
+>>>>>>> autofocus
         self.ov_images = {}
         self.ov_reslice_line = {}
         self.prev_img_mean_stddev = [0, 0]
@@ -119,8 +130,8 @@ class ImageInspector:
             self.image_diff_hist_lower_limit)
         self.cfg['debris']['histogram_diff_threshold'] = str(
             self.histogram_diff_threshold)
-            
-    
+
+
     def load_and_inspect(self, filename):
         """Load filename with error handling, convert to numpy array, calculate
         mean and stddev, and check if image appears incomplete.
@@ -143,17 +154,21 @@ class ImageInspector:
             # Calculate mean and stddev
             mean = np.mean(img)
             stddev = np.std(img)
-            
+
+            # TODO consider computing sharpness only for tracked tiles
+            sharpness = utils._sobel(img)
+            # sharpness = stddev
+
 
             # Was complete image grabbed? Test if first or final line of image
             # is black/white/uniform greyscale
             height = img.shape[0]
-            first_line = img[0:1,:]
-            final_line = img[height-1:height,:]
+            first_line = img[0:1, :]
+            final_line = img[height-1:height, :]
             grab_incomplete = (np.min(first_line) == np.max(first_line) or
                                np.min(final_line) == np.max(final_line))
 
-        return img, mean, stddev, load_error, load_exception, grab_incomplete
+        return img, mean, stddev, sharpness, load_error, load_exception, grab_incomplete
 
 
     def process_tile(self, filename, grid_index, tile_index, slice_counter, mask):
@@ -178,7 +193,7 @@ class ImageInspector:
                     load_error, grab_incomplete, frozen_frame_error)
         # End of MagC-specific code
 
-        img, mean, stddev, load_error, load_exception, grab_incomplete = (
+        img, mean, stddev, sharpness, load_error, load_exception, grab_incomplete = (
             self.load_and_inspect(filename))
 
         ma_mean, ma_stddev, ma_sharp, err, ex = (self.load_and_inspect_image_quality(filename, mask, masking=True))
@@ -210,8 +225,8 @@ class ImageInspector:
             preview_img = Image.frombytes(
                 'L', (width, height),
                 img_tostring).resize((
-                    PREVIEW_IMG_WIDTH, 
-                    int(PREVIEW_IMG_WIDTH * height / width)), 
+                    PREVIEW_IMG_WIDTH,
+                    int(PREVIEW_IMG_WIDTH * height / width)),
                     resample=Image.BILINEAR)
 
             # Convert to QPixmap and save in grid_manager
@@ -249,12 +264,22 @@ class ImageInspector:
                 self.tile_stddevs[tile_key].pop(0)
             self.tile_stddevs[tile_key].append((slice_counter, stddev))
 
+<<<<<<< HEAD
             if not tile_key in self.tile_stats:
                 self.tile_stats[tile_key] = []
             if len(self.tile_stats[tile_key]) > 1:
                 self.tile_stats[tile_key].pop(0)
             self.tile_stats[tile_key].append((slice_counter, ma_mean, ma_stddev, ma_sharp))
             
+=======
+            if not tile_key in self.tile_sharpness:
+                self.tile_sharpness[tile_key] = []
+            if len(self.tile_sharpness[tile_key]) > 1:
+                self.tile_sharpness[tile_key].pop(0)
+            self.tile_sharpness[tile_key].append((slice_counter, sharpness))
+
+
+>>>>>>> autofocus
             if (tile_key_short in self.monitoring_tile_list
                 or 'all' in self.monitoring_tile_list):
                 if len(self.tile_means[tile_key]) > 1:
@@ -287,7 +312,7 @@ class ImageInspector:
             del img_tostring
             del preview_img
 
-        return (img, mean, stddev,
+        return (img, mean, stddev, sharpness,
                 range_test_passed, slice_by_slice_test_passed, tile_selected,
                 load_error, load_exception, grab_incomplete, frozen_frame_error)
 
@@ -338,11 +363,17 @@ class ImageInspector:
             try:
                 with open(stats_filename, 'a') as file:
                     file.write(str(slice_counter).zfill(utils.SLICE_DIGITS)
+<<<<<<< HEAD
                                + ';' + "{:.3f}".format(self.tile_means[tile_key][-1][1])
                                + ';' + "{:.3f}".format(self.tile_stddevs[tile_key][-1][1])
                                + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][1])
                                + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][2])
                                + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][3])
+=======
+                               + ';' + str(self.tile_means[tile_key][-1][1])
+                               + ';' + str(self.tile_stddevs[tile_key][-1][1])
+                               + ';' + str(self.tile_sharpness[tile_key][-1][1])
+>>>>>>> autofocus
                                + '\n')
             except Exception as e:
                 success = False  # writing to disk failed
@@ -385,7 +416,7 @@ class ImageInspector:
         """Load overview image from disk and perform standard tests."""
         range_test_passed = False
 
-        ov_img, mean, stddev, load_error, load_exception, grab_incomplete = (
+        ov_img, mean, stddev, sharpness, load_error, load_exception, grab_incomplete = (
             self.load_and_inspect(filename))
 
         if not load_error:
@@ -410,6 +441,12 @@ class ImageInspector:
                 self.ov_stddevs[ov_index].pop(0)
             self.ov_stddevs[ov_index].append(stddev)
 
+            if not (ov_index in self.ov_sharpness):
+                self.ov_sharpness[ov_index] = []
+            if len(self.ov_sharpness[ov_index]) > 1:
+                self.ov_sharpness[ov_index].pop(0)
+            self.ov_sharpness[ov_index].append(0.0)  # TODO: for now, do not compute sharpness on OVs
+
             # Save reslice line in memory. Take a 400-px line from the centre
             # of the image. This works for all frame resolutions.
             # Only saved to disk later if OV accepted.
@@ -423,7 +460,7 @@ class ImageInspector:
                 (self.mean_lower_limit <= mean <= self.mean_upper_limit) and
                 (self.stddev_lower_limit <= stddev <= self.stddev_upper_limit))
 
-        return (ov_img, mean, stddev,
+        return (ov_img, mean, stddev, sharpness,
                 range_test_passed, load_error, load_exception, grab_incomplete)
 
     def save_ov_stats(self, base_dir, ov_index, slice_counter):
@@ -439,7 +476,8 @@ class ImageInspector:
                 with open(stats_filename, 'a') as file:
                     file.write(str(slice_counter) + ';'
                                + str(self.ov_means[ov_index][-1]) + ';'
-                               + str(self.ov_stddevs[ov_index][-1])
+                               + str(self.ov_stddevs[ov_index][-1]) + ';'
+                               + str(self.ov_sharpness[ov_index][-1])
                                + '\n')
             except Exception as e:
                 success = False  # couldn't write to disk
@@ -601,4 +639,5 @@ class ImageInspector:
     def reset_tile_stats(self):
         self.tile_means = {}
         self.tile_stddevs = {}
+        self.tile_sharpnesses = {}
         self.tile_reslice_line = {}

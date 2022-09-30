@@ -12,7 +12,6 @@
 
 import os
 import datetime
-import json
 import re
 import logging
 import threading
@@ -34,10 +33,10 @@ from logging.handlers import RotatingFileHandler
 from shapely.geometry import Polygon
 from shapely.geometry import Point
 from skimage.transform import ProjectiveTransform
-from skimage.measure import ransac
 from serial.tools import list_ports
 from PyQt5.QtCore import QObject, pyqtSignal
-
+from skimage.measure import ransac
+from matplotlib.pyplot import ylabel, plot, savefig, rcParams, xlabel
 
 # Default and minimum size of the Viewport canvas.
 VP_WIDTH = 1000
@@ -143,6 +142,7 @@ class Error(Enum):
     autofocus_heuristic = 506
     wd_stig_difference = 507
     metadata_server = 508
+    autofocus_afss = 509
 
     # Reserved for user-defined errors
     test_case = 601
@@ -216,6 +216,7 @@ Errors = {
     Error.tile_image_compare: 'Tile image error (slice-by-slice comparison)',
     Error.autofocus_smartsem: 'Autofocus error (SmartSEM)',
     Error.autofocus_heuristic: 'Autofocus error (heuristic)',
+    Error.autofocus_afss: 'Autofocus error (Automated Focus/Stig series)', # TODO
     Error.wd_stig_difference: 'WD/STIG difference error',
     Error.metadata_server: 'Metadata server error',
 
@@ -895,6 +896,7 @@ def barycenter(points):
 # -------------- End of MagC utils --------------
 
 
+<<<<<<< HEAD
 def sobel(data, kernel=3): #kernel = -1 ==Scharr
     sobelx = Sobel(data,cv2.CV_64F,1,0,kernel)
     sobely = Sobel(data,cv2.CV_64F,0,1,kernel)
@@ -954,3 +956,11 @@ def reg_cross_corr(im1, im2):
 # compute xy drift between tiles
 def get_ref_img_fn(filename):
     s = str.split(filename, '_')[-1]
+=======
+def _sobel(data, kernel=5): #kernel = -1 ==Scharr
+    sobel_x = cv2.Sobel(data,cv2.CV_64F,1,0,kernel)
+    sobel_y = cv2.Sobel(data,cv2.CV_64F,0,1,kernel)
+    return np.mean(cv2.magnitude(sobel_x, sobel_y))
+
+
+>>>>>>> autofocus
