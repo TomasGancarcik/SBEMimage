@@ -160,7 +160,7 @@ class ImageInspector:
 
         return img, mean, stddev, sharpness, load_error, load_exception, grab_incomplete
 
-    def process_tile(self, filename, grid_index, tile_index, slice_counter, mask):
+    def process_tile(self, filename, grid_index, tile_index, slice_counter, mask, masking):
         range_test_passed, slice_by_slice_test_passed = False, False
         frozen_frame_error = False
         tile_selected = False
@@ -186,22 +186,25 @@ class ImageInspector:
         img, mean, stddev, sharpness, load_error, load_exception, grab_incomplete = (
             self.load_and_inspect(filename))
 
-        ma_mean, ma_stddev, ma_sharp, err, ex = (self.load_and_inspect_image_quality(filename, mask, masking=True))
-
-        ref_img = None
-        drift = (0, 0)
-        ref_img_fn = utils.get_ref_img_fn(filename)
-        ref_img_load_err = False
-        try:
-            ref_img = imread(ref_img_fn)
-        except:
-            #print('Can not read reference image.')
-            ref_img_load_err = True
-
-        if not ref_img_load_err:
-            drift = self.compute_drift(filename)
+        if masking:
+            ma_mean, ma_stddev, ma_sharp, err, ex = self.load_and_inspect_image_quality(filename, mask)
         else:
-            drift = ('NaN', 'NaN')
+            ma_mean, ma_stddev, ma_sharp = 0, 0, 0
+
+        # ref_img = None
+        # drift = (0, 0)
+        # ref_img_fn = utils.get_ref_img_fn(filename)
+        # ref_img_load_err = False
+        # try:
+        #     ref_img = imread(ref_img_fn)
+        # except:
+        #     #print('Can not read reference image.')
+        #     ref_img_load_err = True
+        #
+        # if not ref_img_load_err:
+        #     drift = self.compute_drift(filename)
+        # else:
+        #     drift = ('NaN', 'NaN')
 
         if not (load_error and err):
 
@@ -299,29 +302,28 @@ class ImageInspector:
         ### Return computed image statistics.
         # Use 'ma_sharp' for sharpness on masked circular region, 'sharpness' for no masking (entire image area)
         ###
-        return (img, mean, stddev, ma_sharp,
+        if masking:
+            sharpness = ma_sharp
+        return (img, mean, stddev, sharpness,
                 range_test_passed, slice_by_slice_test_passed, tile_selected,
                 load_error, load_exception, grab_incomplete, frozen_frame_error)
 
-    def load_and_inspect_image_quality(self, filename, mask, masking=True):
-        """Load filename with error handling and calculate image statistics.
-        if masking==True, compute only on centered circular crop region of the image.
+    def load_and_inspect_image_quality(self, filename, mask):
+        """Load filename with error handling and calculate image statistics
+         on centered circular crop region of the image.
         """
         img = None
         ma_mean, ma_stddev, ma_sharp = 0, 0, 0
         load_error = False
         load_exception = ''
-
         try:
             img = imread(filename)
         except Exception as e:
             load_exception = str(e)
             load_error = True
         if not load_error:
-            img_grad = sobel(img)  # gradient image
-            if masking:  # apply circular binary mask on original and gradient image
-                img = np.ma.array(img, mask=mask)
-                img_grad = np.ma.array(img_grad, mask=mask)
+            img = np.ma.array(img, mask=mask)  # apply circular binary mask on original image
+            img_grad = np.ma.array(sobel(img), mask=mask)  # apply circular binary mask on gradient image
             # Calculate mean, stddev, sharpness on center circular region of image
             ma_mean = img.mean()
             ma_stddev = img.std()

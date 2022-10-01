@@ -1026,6 +1026,15 @@ class GridManager:
         # self.cs.magc_wafer_transform = []
         # self.cs.magc_wafer_calibrated = False
 
+        # Available tile aspect ratios/sizes
+        self.tile_sizes = {'mask_8k': (8192, 6144),
+                      'mask_6k': (6144, 4608),
+                      'mask_4k': (4096, 3072),
+                      'mask_3k': (3072, 2304),
+                      'mask_2k': (2048, 1536),
+                      'mask_1k': (1024, 768),
+                      'mask_0k': (512, 384)}
+
     def fit_apply_aberration_gradient(self):
         dc_aberr = dict()
         dc_pos = dict()

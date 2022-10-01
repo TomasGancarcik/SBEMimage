@@ -452,11 +452,10 @@ class Acquisition:
                 self.base_dir, timestamp)
 
             # Create and save circular binary masks for image quality inspection
-            tile_sizes = {'mask_4k': (4096, 3072), 'mask_3k': (3072, 2304), 'mask_2k': (2048, 1536)}
-            for size in tile_sizes:
+            for size_id in self.gm.tile_sizes:
                 mask_fn = os.path.join(
-                    self.base_dir, 'meta', 'stats', size + '.tif')
-                mask = utils.create_mask(tile_sizes[size])
+                    self.base_dir, 'meta', 'stats', size_id + '.tif')
+                mask = utils.create_mask(self.gm.tile_sizes[size_id])
                 utils.save_mask(mask, mask_fn)
 
             # Create main log file, in which all entries are saved.
@@ -2576,14 +2575,17 @@ class Acquisition:
 
             # Check if image was saved and process it
             if os.path.isfile(save_path):
-                # get key to appropriate image mask for quality monitor
+                # identify appropriate image mask for quality monitor (based on image width value)
+                masking = False
                 tile_width, tile_height = self.gm[grid_index].frame_size
-                tile_asp_ratio = {'mask_2k': 2048, 'mask_3k': 3072, 'mask_4k': 4096}
-                mask_key = ''
-                for key, width in tile_asp_ratio.items():
-                    if width == tile_width:
-                        mask_key = key
-
+                mask_key = [key for key, size in self.gm.tile_sizes.items() if size[0] == tile_width][0]
+                if mask_key:
+                    masking == True
+                else:
+                    masking = False
+                    mask_key = 'mask_0k'  # just a dummy mask key for 'process_tile' function in case no
+                                          # compatible mask (0k : 8k) could be found
+                    
                 start_time = time()
                 (tile_img, mean, stddev, sharpness,
                  range_test_passed, slice_by_slice_test_passed, tile_selected,
@@ -2591,7 +2593,7 @@ class Acquisition:
                  grab_incomplete, frozen_frame_error) = (
                     self.img_inspector.process_tile(save_path,
                                                     grid_index, tile_index,
-                                                    self.slice_counter, self.img_masks[mask_key]))
+                                                    self.slice_counter, self.img_masks[mask_key], masking))
                 # Time the duration of process_tile()
                 end_time = time()
                 inspect_duration = end_time - start_time
