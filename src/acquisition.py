@@ -150,7 +150,6 @@ class Acquisition:
         if not os.path.isfile(notes_file):
             open(notes_file, 'a').close()
 
-
     @property
     def base_dir(self):
         return self._base_dir
@@ -453,7 +452,7 @@ class Acquisition:
                 self.base_dir, timestamp)
 
             # Create and save circular binary masks for image quality inspection
-            tile_sizes = {'mask_4k':(4096, 3072), 'mask_3k': (3072, 2304), 'mask_2k':(2048, 1536)}
+            tile_sizes = {'mask_4k': (4096, 3072), 'mask_3k': (3072, 2304), 'mask_2k': (2048, 1536)}
             for size in tile_sizes:
                 mask_fn = os.path.join(
                     self.base_dir, 'meta', 'stats', size + '.tif')
@@ -1250,21 +1249,22 @@ class Acquisition:
                             msg = f'Applying average StigY correction {round(mean_diff, 3)} % to all tracked tiles.'
                             utils.log_info('AFSS', msg)
                             self.add_to_main_log('ASFF' + msg)
+                    else:
+                        msg = f'Applying {self.autofocus.afss_mode} corrections to all tracked tiles:'
+                        utils.log_info('AFSS', msg)
+                        self.add_to_main_log('AFSS' + msg)
 
                     for tile_key in log_msgs:
                         msg = log_msgs[tile_key]
                         self.add_to_main_log(msg)
                         utils.log_info(msg.split(':')[0], msg.split(':')[1][1:])
-
-                    self.autofocus.afss_next_activation += self.autofocus.interval
-                    self.autofocus.next_afss_mode()
-                    self.add_to_main_log(
-                        f'AFSS: {self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
-                    utils.log_info('AFSS',
-                                   f'{self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
                     self.autofocus.reset_afss_corrections()
+                    self.autofocus.next_afss_mode()
+                    self.autofocus.afss_next_activation += self.autofocus.interval
+                    self.add_to_main_log(f'AFSS: {self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
+                    utils.log_info('AFSS', f'{self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
                     self.autofocus.afss_active = False
-
+                # In case AFSS results do not pass thresholding:
                 else:
                     msg = 'Differences in WD/STIG (AFSS) too large. Resetting original values.'
                     utils.log_info('AFSS', msg)
@@ -1924,7 +1924,7 @@ class Acquisition:
                 self.do_autofocus_before_grid_acq(grid_index)
             self.gm.fit_apply_aberration_gradient()
 
-        ####     AFSS     #####
+        ####    AFSS     #####
 
         # For Automated Focus/Stigmator series (method 4), apply the WD or Stigmator perturbations
         self.do_afss_corrections = False
@@ -1938,16 +1938,12 @@ class Acquisition:
             self.add_to_main_log('CTRL: AFSS activation postponed to the next slice (some ref.tiles already imaged).')
 
         series_active = self.autofocus.afss_next_activation \
-                           <= self.slice_counter \
-                           <= self.autofocus.afss_next_activation + self.autofocus.afss_rounds
-
+                        <= self.slice_counter \
+                        <= self.autofocus.afss_next_activation + self.autofocus.afss_rounds
 
         self.autofocus.afss_active = self.use_autofocus and \
                                      self.autofocus.method == 4 and \
                                      series_active
-        # if series_active:
-        #     self.autofocus.afss_mode = 'focus'
-        #     # print('mode_focus_active')
 
         # Perform Focus or StigX or StigY setting with correct iteration within series
         if self.autofocus.afss_active:
@@ -1958,7 +1954,6 @@ class Acquisition:
             self.afss_deltas = fct * np.asarray((self.autofocus.afss_wd_delta,
                                                  self.autofocus.afss_stig_x_delta,
                                                  self.autofocus.afss_stig_y_delta))
-            # self.afss_wd_delta = self.afss_deltas[0]  # TODO: remove
 
             # Apply AFSS perturbations for all ref. tiles in active grids
             for tile_index in ref_tiles:
@@ -1980,7 +1975,7 @@ class Acquisition:
                     new_stig_xy = np.asarray(self.gm[grid_index][tile_index].stig_xy) + delta_stig
                     self.gm[grid_index][tile_index].stig_xy = new_stig_xy
                 elif self.autofocus.afss_mode == 'stig_y':
-                    delta_stig = np.asarray((0, self.afss_deltas[1]))
+                    delta_stig = np.asarray((0, self.afss_deltas[2]))
                     new_stig_xy = np.asarray(self.gm[grid_index][tile_index].stig_xy) + delta_stig
                     self.gm[grid_index][tile_index].stig_xy = new_stig_xy
 
@@ -1995,24 +1990,23 @@ class Acquisition:
                 #                 self.autofocus.afss_wd_stig_orig[tile_key] = self.gm[grid_index][tile_index].wd
                 #             self.gm[grid_index][tile_index].wd += self.afss_wd_delta
 
-            utils.log_info('CTRL',
-                           f'Automated {self.autofocus.afss_mode.capitalize()} series active ({self.autofocus.afss_current_round + 1}/{self.autofocus.afss_rounds})')
+            utils.log_info('AFSS', f'Automated {self.autofocus.afss_mode.capitalize()} series active ({self.autofocus.afss_current_round + 1}/{self.autofocus.afss_rounds})')
             if self.autofocus.afss_mode == 'focus':
                 utils.log_info('AFSS', 'delta wd = {0:+.3f} um'.format(self.afss_deltas[0] * 1000000))
-                self.add_to_main_log(
-                    f'CTRL: Automated Focus/Stigmator series active ({self.autofocus.afss_current_round + 1}/{self.autofocus.afss_rounds})')
-                self.add_to_main_log('AFSS: DELTA_WD: {0:+.3f} um.'.format(self.afss_deltas[0] * 1000000))
+                self.add_to_main_log(f'AFSS: Automated Focus series active ({self.autofocus.afss_current_round + 1}/{self.autofocus.afss_rounds})')
+                self.add_to_main_log('AFSS: delta_wd: {0:+.3f} um.'.format(self.afss_deltas[0] * 1000000))
             elif self.autofocus.afss_mode == 'stig_x' or 'stig_y':
                 utils.log_info('AFSS', f'delta stig: {np.around(delta_stig, 2)} %')
-                self.add_to_main_log(
-                    f'AFSS: Automated {self.autofocus.afss_mode.capitalize()} series active ({self.autofocus.afss_current_round + 1}/{self.autofocus.afss_rounds})')
-                self.add_to_main_log(f'AFSS: delta stig: {np.around(delta_stig, 2)} %')
+                self.add_to_main_log(f'AFSS: Automated {self.autofocus.afss_mode.capitalize()} series active ({self.autofocus.afss_current_round + 1}/{self.autofocus.afss_rounds})')
+                self.add_to_main_log(f'AFSS: delta_stig(x,y): {np.around(delta_stig, 2)} %')
 
             # Process entire set of focus/stig series after series were acquired ('do_cut' method)
             #  TODO: Following if should also have a binary condition check for successful
             #  TODO: series acquisition (preferably without pausing the acquisition)
             if self.autofocus.afss_current_round == self.autofocus.afss_rounds - 1:
                 self.do_afss_corrections = True
+
+        ####    EOF AFSS     #####
 
         for grid_index in range(self.gm.number_grids):
             if self.error_state != Error.none or self.pause_state == 1:
@@ -2065,7 +2059,7 @@ class Acquisition:
                                 and (self.autofocus_stig_current_slice[0]
                                      or self.autofocus_stig_current_slice[1])
                                 and not self.autofocus.tracking_mode == 3
-                        # in that case these tiles have been visited already
+                                # in that case these tiles have been visited already
                         ):
                             self.do_autofocus_before_grid_acq(grid_index)
                         # Adjust working distances and stigmation parameters

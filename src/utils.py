@@ -895,13 +895,12 @@ def barycenter(points):
 
 # -------------- End of MagC utils --------------
 
+# -------------- Sharpness computation utils --------------
 
-<<<<<<< HEAD
 def sobel(data, kernel=3): #kernel = -1 ==Scharr
     sobelx = Sobel(data,cv2.CV_64F,1,0,kernel)
     sobely = Sobel(data,cv2.CV_64F,0,1,kernel)
     return cv2.magnitude(sobelx, sobely)
-
 
 def create_mask(tile_size):
     width, height = tile_size
@@ -912,13 +911,11 @@ def create_mask(tile_size):
     mask[rr, cc] = False
     return mask
 
-
 def save_mask(mask, filename):
     try:
         imsave(filename, img_as_ubyte(mask))
     except:
         print('Unable to save mask for image quality inspection.')
-
 
 def load_masks(path):
     masks = {}
@@ -927,40 +924,34 @@ def load_masks(path):
         masks[key] = imread(fn)
     return masks
 
-from skimage.util import crop
-from skimage.registration import phase_cross_correlation
-from scipy.ndimage import fourier_shift
+# -------------- EOF Sharpness computation utils --------------
 
-def pad(a):
-    '''
-    cropping the array requires the knowledge of how many items should be cropped (form both ends)
-    input: nr of items to be removed from one end of an array
-    output: 2-tuple, that contains how much the array should be cropped from both end with correct orientation
-    '''
-    p = [0, int(np.ceil(abs(a)))]
-    return p if a<=0 else p[::-1]
-
-def shift_image(arr, shift):
-    offset_img = fourier_shift(np.fft.fftn(arr), shift)
-    return np.fft.ifftn(offset_img).real
-
-def reg_cross_corr(im1, im2):
-    shift, err, diffphase = phase_cross_correlation(im1, im2, upsample_factor=20)
-    im2s = shift_image(im2, shift)
-    crop_vals = [pad(shift[0]), pad(shift[1])]
-    im2s = crop(im2s, crop_vals)
-    im1 = np.asfarray(crop(im1, crop_vals))
-    return im1, im2s
-
-
-# compute xy drift between tiles
-def get_ref_img_fn(filename):
-    s = str.split(filename, '_')[-1]
-=======
-def _sobel(data, kernel=5): #kernel = -1 ==Scharr
-    sobel_x = cv2.Sobel(data,cv2.CV_64F,1,0,kernel)
-    sobel_y = cv2.Sobel(data,cv2.CV_64F,0,1,kernel)
-    return np.mean(cv2.magnitude(sobel_x, sobel_y))
-
-
->>>>>>> autofocus
+## To be used for registration purposes
+# from skimage.util import crop
+# from skimage.registration import phase_cross_correlation
+# from scipy.ndimage import fourier_shift
+#
+# def pad(a):
+#     '''
+#     cropping the array requires the knowledge of how many items should be cropped (form both ends)
+#     input: nr of items to be removed from one end of an array
+#     output: 2-tuple, that contains how much the array should be cropped from both end with correct orientation
+#     '''
+#     p = [0, int(np.ceil(abs(a)))]
+#     return p if a<=0 else p[::-1]
+#
+# def shift_image(arr, shift):
+#     offset_img = fourier_shift(np.fft.fftn(arr), shift)
+#     return np.fft.ifftn(offset_img).real
+#
+# def reg_cross_corr(im1, im2):
+#     shift, err, diffphase = phase_cross_correlation(im1, im2, upsample_factor=20)
+#     im2s = shift_image(im2, shift)
+#     crop_vals = [pad(shift[0]), pad(shift[1])]
+#     im2s = crop(im2s, crop_vals)
+#     im1 = np.asfarray(crop(im1, crop_vals))
+#     return im1, im2s
+#
+# # compute xy drift between tiles
+# def get_ref_img_fn(filename):
+#     s = str.split(filename, '_')[-1]

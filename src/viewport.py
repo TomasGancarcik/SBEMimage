@@ -3802,6 +3802,8 @@ class Viewport(QWidget):
         if filename is not None and os.path.isfile(filename):
             with open(filename, 'r') as file:
                 for line in file:
+                    if line[0] == '#':
+                        continue
                     values_str = line.split(';')
                     values = [x for x in values_str]
                     slice_number_list.append(int(values[0]))
