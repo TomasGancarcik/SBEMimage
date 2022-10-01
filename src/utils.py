@@ -23,7 +23,7 @@ import glob
 from cv2 import Sobel
 from skimage.draw import disk
 from skimage import img_as_ubyte
-from skimage.io import imread, imsave
+from skimage.io import imread, imsave, ImageCollection
 from os.path import basename
 from enum import Enum
 from time import sleep
@@ -927,31 +927,121 @@ def load_masks(path):
 # -------------- EOF Sharpness computation utils --------------
 
 ## To be used for registration purposes
-# from skimage.util import crop
-# from skimage.registration import phase_cross_correlation
-# from scipy.ndimage import fourier_shift
-#
-# def pad(a):
-#     '''
-#     cropping the array requires the knowledge of how many items should be cropped (form both ends)
-#     input: nr of items to be removed from one end of an array
-#     output: 2-tuple, that contains how much the array should be cropped from both end with correct orientation
-#     '''
-#     p = [0, int(np.ceil(abs(a)))]
-#     return p if a<=0 else p[::-1]
-#
-# def shift_image(arr, shift):
-#     offset_img = fourier_shift(np.fft.fftn(arr), shift)
-#     return np.fft.ifftn(offset_img).real
-#
-# def reg_cross_corr(im1, im2):
-#     shift, err, diffphase = phase_cross_correlation(im1, im2, upsample_factor=20)
-#     im2s = shift_image(im2, shift)
-#     crop_vals = [pad(shift[0]), pad(shift[1])]
-#     im2s = crop(im2s, crop_vals)
-#     im1 = np.asfarray(crop(im1, crop_vals))
-#     return im1, im2s
-#
-# # compute xy drift between tiles
-# def get_ref_img_fn(filename):
-#     s = str.split(filename, '_')[-1]
+from skimage.util import crop
+from skimage.registration import phase_cross_correlation
+from scipy.ndimage import fourier_shift, uniform_filter1d
+from skimage import measure, util, filters, img_as_float
+from typing import Tuple
+
+def pad(a):
+    '''
+    cropping the array requires the knowledge of how many items should be cropped (form both ends)
+    input: nr of items to be removed from one end of an array
+    output: 2-tuple, that contains how much the array should be cropped from both end with correct orientation
+    '''
+    p = [0, int(np.ceil(abs(a)))]
+    return p if a<=0 else p[::-1]
+
+def shift_image(arr, shift):
+    offset_img = fourier_shift(np.fft.fftn(arr), shift)
+    return np.fft.ifftn(offset_img).real
+
+def reg_cross_corr(im1, im2):
+    shift, err, diffphase = phase_cross_correlation(im1, im2, upsample_factor=20)
+    im2s = shift_image(im2, shift)
+    crop_vals = [pad(shift[0]), pad(shift[1])]
+    im2s = crop(im2s, crop_vals)
+    im1 = np.asfarray(crop(im1, crop_vals))
+    return im1, im2s
+
+### based on skimage.measure.blur_effect
+### https://scikit-image.org/docs/0.19.x/api/skimage.measure.html?highlight=blur%20effect#skimage.measure.blur_effect
+def blur_effect(image, h_size=11, channel_axis=None, reduce_func=np.max):
+    if channel_axis is not None:
+        try:
+            # ensure color channels are in the final dimension
+            image = np.moveaxis(image, channel_axis, -1)
+        except np.AxisError:
+            print('channel_axis must be one of the image array dimensions')
+            raise
+        except TypeError:
+            print('channel_axis must be an integer')
+            raise
+        #image = rgb2gray(image)
+    n_axes = image.ndim
+    image = img_as_float(image)
+    shape = image.shape
+    B = []
+
+    slices = tuple([slice(2, s - 1) for s in shape])
+    for ax in range(n_axes):
+        filt_im = uniform_filter1d(image, h_size, axis=ax)
+        im_sharp = np.abs(filters.sobel(image, axis=ax))
+        im_blur = np.abs(filters.sobel(filt_im, axis=ax))
+        T = np.maximum(0, im_sharp - im_blur)
+        M1 = np.sum(im_sharp[slices])
+        M2 = np.sum(T[slices])
+        B.append(np.abs((M1 - M2)) / M1)
+
+    return B if reduce_func is None else reduce_func(B)
+
+def uint_normalization(img):
+    img = cv2.normalize(src=img, dst=None, alpha=0, beta=255, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+    return img.astype(np.uint8)
+
+def NormalizeData(data):
+    return (data - np.min(data)) / (np.max(data) - np.min(data))
+
+def load_image_collection(files: list) -> np.ndarray:
+    print('loading image collection...')
+    coll = ImageCollection(files, conserve_memory=True).concatenate()
+    print(f'collection shape: {np.shape(coll)}')
+    return coll
+
+def register_image_collection(imgs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    shifts, cumm_shifts = [], []
+    for i, img in enumerate(imgs[:-1]):
+        # print(f'Registering: {os.path.basename(files[i])}')
+        print(f'Registering img.nr: {i+1}')
+        im1 = imgs[i]
+        im2 = imgs[i + 1]
+        shift, _, __ = phase_cross_correlation(im1, im2, upsample_factor=20)
+        shifts.append(shift)
+    cumm_shifts = np.cumsum(shifts, axis=0)
+    print(f'computed shifts: {shifts}')
+    for i in range(np.shape(imgs)[0]):
+        if i == 0:
+            imgs[i] = uint_normalization(imgs[i])
+        else:
+            imgs[i] = uint_normalization(shift_image(imgs[i], cumm_shifts[i - 1]))
+    print('collection: registered')
+    return imgs, cumm_shifts
+
+def crop_image_collection(image_collection: np.ndarray, cumm_shifts: np.ndarray) -> np.ndarray:
+    print('collection: cropping ...')
+    sX, sY = np.asarray(cumm_shifts)[:, 1], np.asarray(cumm_shifts)[:, 0]
+    sx = np.array(np.round([abs(np.max(sX)), abs(np.min(sX))]), dtype=int)
+    sy = np.array(np.round([abs(np.max(sY)), abs(np.min(sY))]), dtype=int)
+    crop_vals = ([0, 0], sy, sx)
+    cropped_ic = crop(image_collection, crop_vals)
+    print('collection: cropped')
+    return cropped_ic
+
+def get_collection_mask(coll_xy_shape: Tuple[int, int]) -> np.ndarray:
+    height, width = coll_xy_shape
+    center = (int(height / 2), int(width / 2))
+    radius = int(height / 3)
+    rr, cc = disk(center, radius)
+    mask = np.ones((height, width), dtype=bool)
+    mask[rr, cc] = False
+    print('collection: custom mask computed')
+    return mask
+
+def get_collection_sharpness(ic: np.ndarray) -> list:
+    mask = get_collection_mask(np.shape(ic[0]))
+    sh_arr = []
+    for i,img in enumerate(ic):
+        masked_grad_img = np.ma.array(sobel(img), mask=mask)
+        sh_arr.append(np.mean(masked_grad_img))
+    print('collection: sharpness computed')
+    return sh_arr

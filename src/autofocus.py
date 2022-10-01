@@ -103,7 +103,7 @@ class Autofocus():
         self.afss_wd_stig_orig_full = {}  # original values before the AFSS started
         self.afss_mode = 'focus'  # 'focus' 'stig_x' 'stig_y'
         self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
-
+        self.afss_drift_corrected = True
 
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
@@ -130,6 +130,58 @@ class Autofocus():
         self.cfg['autofocus']['afss_consensus_mode'] = str(self.afss_consensus_mode)
 
     # ================ Below: methods for Automated focus/stig series method ==================
+    def process_afss_collections(self):
+        for tile_key in self.afss_wd_stig_corr:
+            print(f'processing collection: {tile_key} ')
+            filenames = []
+            for slice_nr in self.afss_wd_stig_corr[tile_key]:
+                filenames.append(self.afss_wd_stig_corr[tile_key][slice_nr][3])
+            print(f'collection filenames: {filenames} \n')
+            ic = utils.load_image_collection(filenames)
+            ic_reg, cumm_shifts = utils.register_image_collection(ic)
+            ic_cr = utils.crop_image_collection(ic_reg, cumm_shifts)
+            coll_sharpness = utils.get_collection_sharpness(ic_cr)
+            # Fill the results' dict with sharpness values from shift corrected image collection
+            for i, slice_nr in enumerate(self.afss_wd_stig_corr[tile_key]):
+                print(f'Populating {tile_key}, slice_nr: {slice_nr} with sharpness value: {coll_sharpness[i]}\n')
+                self.afss_wd_stig_corr[tile_key][slice_nr][2] = coll_sharpness[i]
+        print(f'processing collections finished...')
+
+    def fit_afss_collections(self, plot_results=False):  # TODO rename to fit_afss_series
+        mode = self.afss_mode
+        # print(self.afss_wd_stig_corr)
+        for tile_key in self.afss_wd_stig_corr:
+            print(f'fitting collection: {tile_key}')
+            x_vals, y_vals = [], []
+            opt = 0.1
+            cfs = []
+            tile_dict = self.afss_wd_stig_corr[tile_key]  # values of particular tile to be processed
+
+            # read the values (wd/stig_x/stig_y, sharpness)
+            if mode == 'focus':
+                for slice_nr in tile_dict:
+                    x_vals.append(tile_dict[slice_nr][0])  # WD series
+            elif mode == 'stig_x':
+                for slice_nr in tile_dict:
+                    x_vals.append(tile_dict[slice_nr][1][0])  # StigX deviation
+            elif mode == 'stig_y':
+                for slice_nr in tile_dict:
+                    x_vals.append(tile_dict[slice_nr][1][1])  # StigX deviation
+            for slice_nr in tile_dict:
+                y_vals.append(tile_dict[slice_nr][2])  # list of sharpness values
+
+            # SPLINE INTERPOLATION
+            # x_vals, y_vals = x_vals[::-1], y_vals[::-1]   # reverse order as iterating through dict above is reversed
+            f1 = interp1d(x_vals, y_vals, kind='cubic')
+            x_new = np.linspace(min(x_vals), max(x_vals), num=101, endpoint=True)
+            opt = x_new[np.argmax(f1(x_new))]
+
+            if plot_results:
+                self.plot_afss_series(x_vals, y_vals, cfs, path='')
+                pass
+
+            self.afss_wd_stig_corr_optima[tile_key] = opt
+        self.afss_wd_stig_corr = {}
 
     def next_afss_mode(self):
         if self.autostig_delay == -1:

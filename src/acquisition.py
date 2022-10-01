@@ -1226,8 +1226,11 @@ class Acquisition:
 
             # Processing of the Automated Focus/Stigmator series
             elif self.do_afss_corrections:
+                # Recompute sharpness if AFSS drift correction is active
+                if self.autofocus.afss_drift_corrected:
+                    self.autofocus.process_afss_collections()
                 # Compute corrections
-                self.autofocus.process_afss_series()
+                self.autofocus.fit_afss_collections()
                 utils.log_info('AFSS', 'Processing series.')
                 self.add_to_main_log('AFSS: Processing series.')
                 if self.autofocus.afss_new_vals_verified():  # AFSS corrections passed thresholding tests:
@@ -2585,7 +2588,7 @@ class Acquisition:
                     masking = False
                     mask_key = 'mask_0k'  # just a dummy mask key for 'process_tile' function in case no
                                           # compatible mask (0k : 8k) could be found
-                    
+
                 start_time = time()
                 (tile_img, mean, stddev, sharpness,
                  range_test_passed, slice_by_slice_test_passed, tile_selected,
@@ -2674,14 +2677,15 @@ class Acquisition:
                     #  correction series = {tile_id: {slice_nr: (tile_wd, tile_stig_xy, sharpness)}
                     ref_tiles = self.gm[
                         grid_index].autofocus_ref_tiles()  # TODO: consider passing it instead of creating
-                    if tile_accepted and tile_index in ref_tiles:
+                    if tile_accepted and tile_index in ref_tiles and self.autofocus.afss_active:
                         if tile_id not in self.autofocus.afss_wd_stig_corr:
                             self.autofocus.afss_wd_stig_corr[tile_id] = {}
 
-                        # entry = {self.slice_counter: (wd, arr([stig_x, stig_y]), sharpness)}
-                        entry = {self.slice_counter: (self.gm[grid_index][tile_index].wd,
+                        # entry = {self.slice_counter: [wd, arr([stig_x, stig_y]), sharpness, full_img_path]}
+                        entry = {self.slice_counter: [self.gm[grid_index][tile_index].wd,
                                                       self.gm[grid_index][tile_index].stig_xy,
-                                                      sharpness)}
+                                                      sharpness,
+                                                      save_path]}
                         self.autofocus.afss_wd_stig_corr[tile_id].update(entry)
                 else:
                     # Tile image file could not be loaded
