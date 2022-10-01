@@ -3173,7 +3173,7 @@ class AutofocusSettingsDlg(QDialog):
         self.spinBox_afss_rounds.setValue(self.autofocus.afss_rounds)
         self.comboBox_afss_consensus_mode.addItems(['Average', 'Specific'])
         self.comboBox_afss_consensus_mode.setCurrentIndex(self.autofocus.afss_consensus_mode)
-        # self.comboBox_consensus_mode.currentIndexChanged.connect(self.change_consensus_mode)
+        self.checkBox_afss_drift_corrected.setChecked(self.autofocus.afss_drift_corrected)
 
         # Disable some settings if MagC mode is active
         if magc_mode:
@@ -3288,6 +3288,7 @@ class AutofocusSettingsDlg(QDialog):
         self.autofocus.afss_rounds = self.spinBox_afss_rounds.value()
         self.autofocus.afss_offset = self.spinBox_afss_offset.value()
         self.autofocus.afss_consensus_mode = self.comboBox_afss_consensus_mode.currentIndex()
+        self.autofocus.afss_drift_corrected = self.checkBox_afss_drift_corrected.isChecked()
         # Heuristic + Mapfost
         self.autofocus.heuristic_calibration = [
             self.doubleSpinBox_focusCalib.value(),

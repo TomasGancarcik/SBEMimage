@@ -330,12 +330,6 @@ class ImageInspector:
             ma_sharp = img_grad.mean()
         return ma_mean, ma_stddev, ma_sharp, load_error, load_exception
 
-    # def compute_drift(self, reference_fn, moving_fn):
-    #     ref_img = imread(reference_fn)
-    #     moving_img = imread(moving_fn)
-    #     shift, err, diffphase = phase_cross_correlation(ref_img, moving_img, upsample_factor=20)
-    #     return shift
-
     def save_tile_stats(self, base_dir, grid_index, tile_index, slice_counter):
         """Write mean and SD of specified tile to disk."""
         success = True

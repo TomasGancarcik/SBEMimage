@@ -103,7 +103,7 @@ class Autofocus():
         self.afss_wd_stig_orig_full = {}  # original values before the AFSS started
         self.afss_mode = 'focus'  # 'focus' 'stig_x' 'stig_y'
         self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
-        self.afss_drift_corrected = True
+        self.afss_drift_corrected = (self.cfg['autofocus']['afss_drift_corrected'].lower() == 'true')
 
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
@@ -128,6 +128,7 @@ class Autofocus():
         self.cfg['autofocus']['afss_rounds'] = str(self.afss_rounds)
         self.cfg['autofocus']['afss_offset'] = str(self.afss_offset)
         self.cfg['autofocus']['afss_consensus_mode'] = str(self.afss_consensus_mode)
+        self.cfg['autofocus']['afss_drift_corrected'] = str(self.afss_drift_corrected)
 
     # ================ Below: methods for Automated focus/stig series method ==================
     def process_afss_collections(self):
@@ -151,7 +152,7 @@ class Autofocus():
         mode = self.afss_mode
         # print(self.afss_wd_stig_corr)
         for tile_key in self.afss_wd_stig_corr:
-            print(f'fitting collection: {tile_key}')
+            # print(f'fitting collection: {tile_key}')
             x_vals, y_vals = [], []
             opt = 0.1
             cfs = []
@@ -199,50 +200,6 @@ class Autofocus():
     def get_afss_factors(self):
         #  get list of WD or Stig perturbations to be used in automated focus/stig series
         self.afss_perturbation_series = np.linspace(-1, 1, self.afss_rounds)
-
-    def process_afss_series(self, plot_results=False):
-        mode = self.afss_mode
-        # print(self.afss_wd_stig_corr)
-        for tile_key in self.afss_wd_stig_corr:
-            #  wd_opt, stig_x_opt, stig_y_opt = None, None, None
-            x_vals, y_vals = [], []
-            opt = 0.1
-            cfs = []
-            tile_dict = self.afss_wd_stig_corr[tile_key]  # values of particular tile to be processed
-
-            # read the values (wd/stig_x/stig_y, sharpness)
-            if mode == 'focus':
-                for slice_nr in tile_dict:
-                    x_vals.append(tile_dict[slice_nr][0])  # WD series
-            elif mode == 'stig_x':
-                for slice_nr in tile_dict:
-                    x_vals.append(tile_dict[slice_nr][1][0])  # StigX deviation
-            elif mode == 'stig_y':
-                for slice_nr in tile_dict:
-                    x_vals.append(tile_dict[slice_nr][1][1])  # StigX deviation
-            for slice_nr in tile_dict:
-                y_vals.append(tile_dict[slice_nr][2])  # list of sharpness values
-
-            # POLYFIT
-            # cfs = np.polyfit(x_vals, y_vals, 2, rcond=None, full=False, w=None, cov=False)
-            # opt = -cfs[1] / (2 * cfs[0])
-            #  if cfs:  # TODO check that fit converged
-            #      print('cfs:', cfs)
-            # else:
-            #     print('cfs:', cfs)
-
-            # SPLINE INTERPOLATION
-            # x_vals, y_vals = x_vals[::-1], y_vals[::-1]   # reverse order as iterating through dict above is reversed
-            f1 = interp1d(x_vals, y_vals, kind='cubic')
-            x_new = np.linspace(min(x_vals), max(x_vals), num=101, endpoint=True)
-            opt = x_new[np.argmax(f1(x_new))]
-
-            if plot_results:
-                self.plot_afss_series(x_vals, y_vals, cfs, path='')
-                pass
-
-            self.afss_wd_stig_corr_optima[tile_key] = opt
-        self.afss_wd_stig_corr = {}
 
     def afss_new_vals_verified(self, plot_results=False):
         mode = self.afss_mode

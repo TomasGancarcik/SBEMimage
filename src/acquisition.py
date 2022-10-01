@@ -1224,7 +1224,7 @@ class Acquisition:
                     self.add_to_main_log(
                         'CTRL: Error: Differences in WD/STIG too large.')
 
-            # Processing of the Automated Focus/Stigmator series
+            # --------------- Processing of the Automated Focus/Stigmator series ----------------- #
             elif self.do_afss_corrections:
                 # Recompute sharpness if AFSS drift correction is active
                 if self.autofocus.afss_drift_corrected:
@@ -1280,6 +1280,7 @@ class Acquisition:
                     utils.log_info('AFSS',
                                    f'{self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
                     self.autofocus.afss_active = False
+            # --------------- EOF Processing of the Automated Focus/Stigmator series ------------- #
 
             else:
                 # TODO: why is that? all microtomes already wait for completion during do_full_cut.
