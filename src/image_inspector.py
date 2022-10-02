@@ -348,9 +348,9 @@ class ImageInspector:
                     file.write(str(slice_counter).zfill(utils.SLICE_DIGITS)
                                + ';' + "{:.3f}".format(self.tile_means[tile_key][-1][1])
                                + ';' + "{:.3f}".format(self.tile_stddevs[tile_key][-1][1])
-                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][1])
-                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][2])
-                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][3])
+                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][1])    # masked mean
+                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][2])    # masked stddev
+                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][3])    # masked sharpness
                                + '\n')
             except Exception as e:
                 success = False  # writing to disk failed

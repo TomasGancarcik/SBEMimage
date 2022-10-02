@@ -993,38 +993,38 @@ def NormalizeData(data):
     return (data - np.min(data)) / (np.max(data) - np.min(data))
 
 def load_image_collection(files: list) -> np.ndarray:
-    print('loading image collection...')
+    # print('loading image collection...')
     coll = ImageCollection(files, conserve_memory=True).concatenate()
-    print(f'collection shape: {np.shape(coll)}')
+    # print(f'collection shape: {np.shape(coll)}')
     return coll
 
 def register_image_collection(imgs: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     shifts, cumm_shifts = [], []
     for i, img in enumerate(imgs[:-1]):
         # print(f'Registering: {os.path.basename(files[i])}')
-        print(f'Registering img.nr: {i+1}')
+        # print(f'Registering img.nr: {i+1}')
         im1 = imgs[i]
         im2 = imgs[i + 1]
         shift, _, __ = phase_cross_correlation(im1, im2, upsample_factor=20)
         shifts.append(shift)
     cumm_shifts = np.cumsum(shifts, axis=0)
-    print(f'computed shifts: {shifts}')
+    # print(f'computed shifts: {shifts}')
     for i in range(np.shape(imgs)[0]):
         if i == 0:
             imgs[i] = uint_normalization(imgs[i])
         else:
             imgs[i] = uint_normalization(shift_image(imgs[i], cumm_shifts[i - 1]))
-    print('collection: registered')
+    # print('collection: registered')
     return imgs, cumm_shifts
 
 def crop_image_collection(image_collection: np.ndarray, cumm_shifts: np.ndarray) -> np.ndarray:
-    print('collection: cropping ...')
+    # print('collection: cropping ...')
     sX, sY = np.asarray(cumm_shifts)[:, 1], np.asarray(cumm_shifts)[:, 0]
     sx = np.array(np.round([abs(np.max(sX)), abs(np.min(sX))]), dtype=int)
     sy = np.array(np.round([abs(np.max(sY)), abs(np.min(sY))]), dtype=int)
     crop_vals = ([0, 0], sy, sx)
     cropped_ic = crop(image_collection, crop_vals)
-    print('collection: cropped')
+    # print('collection: cropped')
     return cropped_ic
 
 def get_collection_mask(coll_xy_shape: Tuple[int, int]) -> np.ndarray:
@@ -1034,7 +1034,7 @@ def get_collection_mask(coll_xy_shape: Tuple[int, int]) -> np.ndarray:
     rr, cc = disk(center, radius)
     mask = np.ones((height, width), dtype=bool)
     mask[rr, cc] = False
-    print('collection: custom mask computed')
+    # print('collection: custom mask computed')
     return mask
 
 def get_collection_sharpness(ic: np.ndarray) -> list:
@@ -1043,5 +1043,5 @@ def get_collection_sharpness(ic: np.ndarray) -> list:
     for i,img in enumerate(ic):
         masked_grad_img = np.ma.array(sobel(img), mask=mask)
         sh_arr.append(np.mean(masked_grad_img))
-    print('collection: sharpness computed')
+    # print('collection: sharpness computed')
     return sh_arr
