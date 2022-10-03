@@ -102,11 +102,12 @@ class Autofocus():
         self.afss_wd_stig_orig = {}  # original values before the AFSS started: dict = {tile_keys: [wd, (sx,sy)]}
         self.afss_wd_stig_corr = {}  #  dict = {tile_keys: {slice_nrs: [wd, (sx,sy), sharpness, img_full_path]}}
         self.afss_wd_stig_corr_optima = {}  # Computed corrections AFSS: dict = {tile_keys: wd/stig opt.val}
-        self.afss_mode = 'stig_x'  # 'focus' 'stig_x' 'stig_y'  # allows to define type of afss series to be used at the beginning of acquisition
+        self.afss_mode = self.cfg['autofocus']['afss_mode']  # 'focus' 'stig_x' 'stig_y'  # allows to define type of afss series to be used at the beginning of acquisition
         self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
         self.afss_drift_corrected = (self.cfg['autofocus']['afss_drift_corrected'].lower() == 'true')
         self.afss_active = False    # this might be beneficial for implementing continuation of afss series after pause
         self.afss_interpolation_method = 'polyfit'  # fct to be used for interpolating the measured sharpness values
+        self.afss_autostig_active = (self.cfg['autofocus']['afss_autostig_active'].lower() == 'true')
 
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
@@ -132,6 +133,8 @@ class Autofocus():
         self.cfg['autofocus']['afss_offset'] = str(self.afss_offset)
         self.cfg['autofocus']['afss_consensus_mode'] = str(self.afss_consensus_mode)
         self.cfg['autofocus']['afss_drift_corrected'] = str(self.afss_drift_corrected)
+        self.cfg['autofocus']['afss_autostig_active'] = str(self.afss_autostig_active)
+        self.cfg['autofocus']['afss_mode'] = str(self.afss_mode)
 
     # ================ Below: methods for Automated focus/stig series method ==================
     def process_afss_collections(self):
@@ -263,7 +266,7 @@ class Autofocus():
         plt.savefig(path, dpi=100)
 
     def next_afss_mode(self):
-        if self.autostig_delay == -1:
+        if not self.afss_autostig_active:
             self.afss_mode = 'focus'
         elif self.afss_mode == 'focus':
             self.afss_mode = 'stig_x'

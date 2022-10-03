@@ -3165,7 +3165,6 @@ class AutofocusSettingsDlg(QDialog):
 
         # For Automated Focus/Stigmator series:
         self.spinBox_afss_interval.setValue(self.autofocus.interval)  # shared with SEM autofocus
-        self.spinBox_afss_autostigDelay.setValue(self.autofocus.autostig_delay)  # shared with SEM autofocus
         self.spinBox_afss_offset.setValue(self.autofocus.afss_offset)
         self.doubleSpinBox_afss_wdDiff.setValue(self.autofocus.afss_wd_delta * 1000000)
         self.doubleSpinBox_afss_stigXDiff.setValue(self.autofocus.afss_stig_x_delta)
@@ -3174,6 +3173,9 @@ class AutofocusSettingsDlg(QDialog):
         self.comboBox_afss_consensus_mode.addItems(['Average', 'Specific'])
         self.comboBox_afss_consensus_mode.setCurrentIndex(self.autofocus.afss_consensus_mode)
         self.checkBox_afss_drift_corrected.setChecked(self.autofocus.afss_drift_corrected)
+        self.checkBox_afss_autostig_active.setChecked(self.autofocus.afss_autostig_active)
+        self.checkBox_afss_autostig_active.stateChanged.connect(
+            self.update_afss_mode)
 
         # Disable some settings if MagC mode is active
         if magc_mode:
@@ -3242,9 +3244,9 @@ class AutofocusSettingsDlg(QDialog):
         else:
             self.lineEdit_refTiles.setEnabled(True)
 
-    # def change_consensus_mode(self):
-    #     if self.comboBox_consensus_mode.currentIndex() == 1
-    #
+    def update_afss_mode(self):
+        if not self.checkBox_afss_autostig_active.isChecked():
+            self.autofocus.afss_mode = 'focus'
 
     def accept(self):
         error_str = ''
@@ -3281,7 +3283,6 @@ class AutofocusSettingsDlg(QDialog):
         self.autofocus.stig_y_delta = self.doubleSpinBox_stigYDiff.value()
         # AFSS
         self.autofocus.interval = self.spinBox_afss_interval.value()
-        self.autofocus.autostig_delay = self.spinBox_afss_autostigDelay.value()
         self.autofocus.afss_wd_delta = self.doubleSpinBox_afss_wdDiff.value() / 1000000
         self.autofocus.afss_stig_x_delta = self.doubleSpinBox_afss_stigXDiff.value()
         self.autofocus.afss_stig_y_delta = self.doubleSpinBox_afss_stigYDiff.value()
@@ -3289,6 +3290,7 @@ class AutofocusSettingsDlg(QDialog):
         self.autofocus.afss_offset = self.spinBox_afss_offset.value()
         self.autofocus.afss_consensus_mode = self.comboBox_afss_consensus_mode.currentIndex()
         self.autofocus.afss_drift_corrected = self.checkBox_afss_drift_corrected.isChecked()
+        self.autofocus.afss_autostig_active = self.checkBox_afss_autostig_active.isChecked()
         # Heuristic + Mapfost
         self.autofocus.heuristic_calibration = [
             self.doubleSpinBox_focusCalib.value(),

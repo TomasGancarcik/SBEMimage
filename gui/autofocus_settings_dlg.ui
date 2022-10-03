@@ -532,32 +532,45 @@
     </rect>
    </property>
    <property name="title">
-    <string>AFSS autofocus parameters</string>
+    <string>Automated Focus/Stigmator Series parameters</string>
    </property>
    <widget class="QLabel" name="label_afss_interval">
     <property name="geometry">
      <rect>
       <x>10</x>
       <y>20</y>
-      <width>191</width>
+      <width>205</width>
       <height>20</height>
      </rect>
     </property>
     <property name="text">
-     <string>[Focus StigX StigY] Interval N (slices):</string>
+     <string>Interval N (slices) :</string>
     </property>
    </widget>
     <widget class="QLabel" name="label_afss_interval_2">
     <property name="geometry">
      <rect>
-      <x>7</x>
+      <x>10</x>
       <y>35</y>
       <width>199</width>
       <height>20</height>
      </rect>
     </property>
     <property name="text">
-     <string> Requires N > (3 x nr. of perturbations) </string>
+     <string>AF-> N -> StigX -> N -> StigY -> N</string>
+    </property>
+   </widget>
+       <widget class="QLabel" name="label_afss_interval_2">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>50</y>
+      <width>199</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Requires N >= nr. of perturbations </string>
     </property>
    </widget>
    <widget class="QSpinBox" name="spinBox_afss_interval">
@@ -580,35 +593,6 @@
     </property>
     <property name="value">
      <number>50</number>
-    </property>
-   </widget>
-   <widget class="QSpinBox" name="spinBox_afss_autostigDelay">
-    <property name="geometry">
-     <rect>
-      <x>220</x>
-      <y>50</y>
-      <width>61</width>
-      <height>22</height>
-     </rect>
-    </property>
-    <property name="minimum">
-     <number>-1</number>
-    </property>
-    <property name="maximum">
-     <number>100</number>
-    </property>
-   </widget>
-   <widget class="QLabel" name="label_afss_autostig_delay">
-    <property name="geometry">
-     <rect>
-      <x>10</x>
-      <y>50</y>
-      <width>121</width>
-      <height>20</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string>Autostig switch:</string>
     </property>
    </widget>
    <widget class="QSpinBox" name="spinBox_afss_offset">
@@ -804,6 +788,19 @@
 	 </property>
 	 <property name="text">
 	  <string>Drift correction</string>
+	 </property>
+	</widget>
+	<widget class="QCheckBox" name="checkBox_afss_autostig_active">
+	 <property name="geometry">
+	  <rect>
+	   <x>120</x>
+	   <y>250</y>
+	   <width>151</width>
+	   <height>17</height>
+	  </rect>
+	 </property>
+	 <property name="text">
+	  <string>Enable Stigmator series</string>
 	 </property>
 	</widget>
   </widget>

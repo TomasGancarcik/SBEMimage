@@ -1256,11 +1256,11 @@ class Acquisition:
                         msg = f'Applying {self.autofocus.afss_mode} corrections to all tracked tiles'
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS  : ' + msg)
-
                     for tile_key in log_msgs:
                         msg = log_msgs[tile_key]
                         self.add_to_main_log(msg)
                         utils.log_info(msg.split(':')[0], msg.split(':')[1][1:])
+
                     self.autofocus.reset_afss_corrections()
                     self.autofocus.next_afss_mode()
                     self.autofocus.afss_next_activation += self.autofocus.interval
