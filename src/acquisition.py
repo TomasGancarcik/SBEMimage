@@ -1226,7 +1226,8 @@ class Acquisition:
 
             # --------------- Processing of the Automated Focus/Stigmator series ----------------- #
             elif self.do_afss_corrections:
-                # Recompute sharpness if AFSS drift correction is active
+                # Recompute sharpness if AFSS drift correction is active otherwise use (masked) sharpness values
+                # computed during acquisition by image inspector
                 if self.autofocus.afss_drift_corrected:
                     self.autofocus.process_afss_collections()
                 # Compute corrections
@@ -2582,7 +2583,7 @@ class Acquisition:
                 tile_width, tile_height = self.gm[grid_index].frame_size
                 mask_key = [key for key, size in self.gm.tile_sizes.items() if size[0] == tile_width][0]
                 if mask_key:
-                    masking == True
+                    masking = True
                 else:
                     masking = False
                     mask_key = 'mask_0k'  # just a dummy mask key for 'process_tile' function in case no

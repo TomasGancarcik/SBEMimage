@@ -23,6 +23,8 @@ import numpy as np
 from math import sqrt, exp, sin, cos
 from statistics import mean
 
+import skimage.io
+
 import utils
 from time import sleep, time
 from scipy.signal import correlate2d, fftconvolve
@@ -100,7 +102,7 @@ class Autofocus():
         self.afss_wd_stig_orig = {}  # original values before the AFSS started: dict = {tile_keys: [wd, (sx,sy)]}
         self.afss_wd_stig_corr = {}  #  dict = {tile_keys: {slice_nrs: [wd, (sx,sy), sharpness, img_full_path]}}
         self.afss_wd_stig_corr_optima = {}  # Computed corrections AFSS: dict = {tile_keys: wd/stig opt.val}
-        self.afss_mode = 'focus'  # 'focus' 'stig_x' 'stig_y'
+        self.afss_mode = 'stig_y'  # 'focus' 'stig_x' 'stig_y'
         self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
         self.afss_drift_corrected = (self.cfg['autofocus']['afss_drift_corrected'].lower() == 'true')
         self.afss_active = False
@@ -135,17 +137,23 @@ class Autofocus():
         for tile_key in self.afss_wd_stig_corr:
             print(f'processing collection: {tile_key} ')
             filenames = []
+            basenames = []
             for slice_nr in self.afss_wd_stig_corr[tile_key]:
-                filenames.append(self.afss_wd_stig_corr[tile_key][slice_nr][3])
+                img_path = self.afss_wd_stig_corr[tile_key][slice_nr][3]
+                filenames.append(img_path)
+                basenames.append(os.path.basename(img_path))
             print(f'collection filenames: {filenames} \n')
             ic = utils.load_image_collection(filenames)
             ic_reg, cumm_shifts = utils.register_image_collection(ic)
             ic_cr = utils.crop_image_collection(ic_reg, cumm_shifts)
-            coll_sharpness = utils.get_collection_sharpness(ic_cr)
-            # Fill the results' dict with sharpness values from shift corrected image collection
+            coll_sharpness = utils.get_collection_sharpness(ic_cr, metric='contrast')  # based on custom mask defined
+            # by shape of images in the collection
+            # Fill the results' dict with sharpness values from drift-corrected image collection
             for i, slice_nr in enumerate(self.afss_wd_stig_corr[tile_key]):
                 print(f'Populating {tile_key}, slice_nr: {slice_nr} with sharpness value: {coll_sharpness[i]}\n')
                 self.afss_wd_stig_corr[tile_key][slice_nr][2] = coll_sharpness[i]
+                reg_img_path = os.path.join(self.cfg['acq']['base_dir'], 'meta', 'stats', basenames[i])
+                skimage.io.imsave(reg_img_path, ic_cr[i])
         print(f'processing collections finished...')
 
     def fit_afss_collections(self, plot_results=True):
@@ -172,12 +180,21 @@ class Autofocus():
                 y_vals.append(tile_dict[slice_nr][2])  # list of sharpness values
 
             # SPLINE INTERPOLATION
-            # x_vals, y_vals = x_vals[::-1], y_vals[::-1]   # reverse order as iterating through dict above is reversed
             f1 = interp1d(x_vals, y_vals, kind='cubic')
             x_fit = np.linspace(min(x_vals), max(x_vals), num=101, endpoint=True)
             y_fit = f1(x_fit)
             x_opt, y_opt = x_fit[np.argmax(y_fit)], max(y_fit)  # x,y coordinates of optimal value
             self.afss_wd_stig_corr_optima[tile_key] = x_opt
+
+            # # POLYNOMIAL FIT
+            # wd1, wd2 = 0, 5
+            # WDs = np.linspace(wd1, wd2, len(filenames))
+            # cfs = np.polyfit(WDs, coll_sharpness_edg, 2)
+            # x = np.linspace(wd1, wd2, 1000)
+            # y = cfs[0] * x ** 2 + cfs[1] * x + cfs[2]
+            # opt = -cfs[1] / (2 * cfs[0])
+
+
             # Save resulting plot into stats folder
             if plot_results:
                 plot_path = self.generate_afss_plot_path(tile_key)
