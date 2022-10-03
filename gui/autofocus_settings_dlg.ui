@@ -539,12 +539,25 @@
      <rect>
       <x>10</x>
       <y>20</y>
-      <width>171</width>
+      <width>191</width>
       <height>20</height>
      </rect>
     </property>
     <property name="text">
-     <string>Interval N (Focus/StigX/StigY):</string>
+     <string>[Focus StigX StigY] Interval N (slices):</string>
+    </property>
+   </widget>
+    <widget class="QLabel" name="label_afss_interval_2">
+    <property name="geometry">
+     <rect>
+      <x>7</x>
+      <y>35</y>
+      <width>199</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string> Requires N > (3 x nr. of perturbations) </string>
     </property>
    </widget>
    <widget class="QSpinBox" name="spinBox_afss_interval">
@@ -624,7 +637,7 @@
      </rect>
     </property>
     <property name="text">
-     <string>AFSS offset (slices):</string>
+     <string>Delay after start of acquisition (slices):</string>
     </property>
    </widget>
    <widget class="QLabel" name="label_afss_wd">
@@ -675,7 +688,7 @@
      </rect>
     </property>
     <property name="text">
-     <string>Astig X/Y ±∆ (%):</string>
+     <string>Stigmator X/Y ±∆ (%):</string>
     </property>
    </widget>
    <widget class="QDoubleSpinBox" name="doubleSpinBox_afss_stigXDiff">
@@ -754,7 +767,7 @@
      </rect>
     </property>
     <property name="text">
-     <string>Number of WD/Stig perturbations:</string>
+     <string>Number of WD/Stigmator perturbations:</string>
     </property>
    </widget>
    <widget class="QComboBox" name="comboBox_afss_consensus_mode">

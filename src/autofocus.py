@@ -31,8 +31,8 @@ from scipy.signal import correlate2d, fftconvolve
 import autofocus_mapfost
 from scipy.interpolate import interp1d
 from matplotlib import pyplot as plt
-# plt.rcParams['figure.figsize'] = (8, 6)
-# plt.rcParams.update({'font.size': 16})
+plt.rcParams['figure.figsize'] = (12, 8)
+plt.rcParams.update({'font.size': 12})
 
 class Autofocus():
 
@@ -102,7 +102,7 @@ class Autofocus():
         self.afss_wd_stig_orig = {}  # original values before the AFSS started: dict = {tile_keys: [wd, (sx,sy)]}
         self.afss_wd_stig_corr = {}  #  dict = {tile_keys: {slice_nrs: [wd, (sx,sy), sharpness, img_full_path]}}
         self.afss_wd_stig_corr_optima = {}  # Computed corrections AFSS: dict = {tile_keys: wd/stig opt.val}
-        self.afss_mode = 'focus'  # 'focus' 'stig_x' 'stig_y'  # allows to define type of afss series to be used at the beginning of acquisition
+        self.afss_mode = 'stig_x'  # 'focus' 'stig_x' 'stig_y'  # allows to define type of afss series to be used at the beginning of acquisition
         self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
         self.afss_drift_corrected = (self.cfg['autofocus']['afss_drift_corrected'].lower() == 'true')
         self.afss_active = False    # this might be beneficial for implementing continuation of afss series after pause
@@ -143,7 +143,7 @@ class Autofocus():
                 img_path = self.afss_wd_stig_corr[tile_key][slice_nr][3]
                 filenames.append(img_path)
                 basenames.append(os.path.basename(img_path))
-            print(f'collection filenames: {filenames} \n')
+            # print(f'collection filenames: {filenames} \n')
             ic = utils.load_image_collection(filenames)
             ic_reg, cumm_shifts = utils.register_image_collection(ic)
             ic_cr = utils.crop_image_collection(ic_reg, cumm_shifts)
@@ -169,12 +169,15 @@ class Autofocus():
 
             # read the values (wd/stig_x/stig_y, sharpness)
             if mode == 'focus':
+                x_orig = self.afss_wd_stig_orig[tile_key][0]    # for plotting purposes
                 for slice_nr in tile_dict:
                     x_vals.append(tile_dict[slice_nr][0])  # WD series
             elif mode == 'stig_x':
+                x_orig = self.afss_wd_stig_orig[tile_key][1][0] # for plotting purposes
                 for slice_nr in tile_dict:
                     x_vals.append(tile_dict[slice_nr][1][0])  # StigX deviation
             elif mode == 'stig_y':
+                x_orig = self.afss_wd_stig_orig[tile_key][1][1] # for plotting purposes
                 for slice_nr in tile_dict:
                     x_vals.append(tile_dict[slice_nr][1][1])  # StigX deviation
             for slice_nr in tile_dict:
@@ -203,6 +206,7 @@ class Autofocus():
                 self.plot_afss_series(x_vals=np.asarray(x_vals), y_vals=np.asarray(y_vals),
                                       x_fit=x_fit, y_fit=y_fit,
                                       x_opt=x_opt, y_opt=y_opt,
+                                      x_orig=x_orig,
                                       path=plot_path)
 
         self.afss_wd_stig_corr = {} # Reset the correction dictionary to prepare it for next afss run
@@ -223,22 +227,34 @@ class Autofocus():
                          x_vals: np.ndarray, y_vals: np.ndarray,
                          x_fit: np.ndarray, y_fit: np.ndarray,
                          x_opt: float, y_opt: float,
+                         x_orig: float,
                          path: str
                          ):
-        # y = cfs[0] * x ** 2 + cfs[1] * x + cfs[2]
-        fig, ax = plt.subplots()
+
+        if self.afss_consensus_mode == 0:   # averaging mode
+            avg_corr = self.get_average_afss_correction()
+
         if self.afss_mode == 'focus':   # rescale x axis to millimetres
             x_vals *= 10**3
             x_fit *=10**3
             x_opt *=10**3
+            x_orig *=10**3
             round_digits = 6
             unit = 'mm'
         else:
             round_digits = 3
             unit = '%'
+
+        fig, ax = plt.subplots()
         ax.plot(x_vals, y_vals, 'o', label='Data')
-        ax.plot(x_fit, y_fit, '-', label='Spline interp.')
-        ax.plot(x_opt, y_opt, 'o', label=f'Optimum at: {round(x_opt, round_digits)} {unit}')
+        ax.plot(x_fit, y_fit, '-', label=f'Interpolation {self.afss_interpolation_method}.')
+        ax.axvline(x_orig, color='k', linestyle=':', label=f'Previous setting: {round(x_orig, round_digits)} {unit}')
+        ax.plot(x_opt, y_opt, 'o', label=f'New optimum at: {round(x_opt, round_digits)} {unit}, '
+                                         f'diff = {round(x_opt-x_orig, round_digits)} {unit}')
+        if self.afss_consensus_mode == 0:
+            ax.axvline(x_orig + avg_corr, color='g', linestyle='--',
+                           label=f'New setting (average delta {round(avg_corr, round_digits)} applied): '
+                                 f'{round(x_orig + avg_corr, round_digits)} {unit}')
         ax.legend()
         ax.set_title(str.split(os.path.basename(path), '.')[0] + '_series')
         xlabels = {'focus': 'Working distance [mm]', 'stig_x': 'StigX [%]', 'stig_y': 'StigY [%]'}
@@ -279,7 +295,7 @@ class Autofocus():
                          and diff_sy <= self.max_stig_y_diff)
         return is_below
 
-    def get_average_afss_correction(self):
+    def get_average_afss_correction(self) -> float:
         mode = self.afss_mode
         # Function for mode='Average' in f(apply_afss_corrections)
         diffs = []
