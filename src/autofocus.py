@@ -95,17 +95,18 @@ class Autofocus():
         self.afss_stig_x_delta = json.loads(self.cfg['autofocus']['afss_stig_x_delta'])  # percent
         self.afss_stig_y_delta = json.loads(self.cfg['autofocus']['afss_stig_y_delta'])  # percent
         self.afss_rounds = json.loads(self.cfg['autofocus']['afss_rounds'])  # number of induced focus/stig deviations
-        self.afss_current_round = 0  # position of current WD/stig deviation within AFSS series
         self.afss_offset = json.loads(self.cfg['autofocus']['afss_offset'])  # skip N slices before first AFSS activation
+        self.afss_current_round = 0  # position of current WD/stig deviation within AFSS series
         self.afss_next_activation = 0  # slice nr of nearest planned AFSS run
         self.afss_perturbation_series = []  # series that holds factors by which is the wd/stig delta multiplied
         self.afss_wd_stig_orig = {}  # original values before the AFSS started: dict = {tile_keys: [wd, (sx,sy)]}
         self.afss_wd_stig_corr = {}  #  dict = {tile_keys: {slice_nrs: [wd, (sx,sy), sharpness, img_full_path]}}
         self.afss_wd_stig_corr_optima = {}  # Computed corrections AFSS: dict = {tile_keys: wd/stig opt.val}
-        self.afss_mode = 'stig_y'  # 'focus' 'stig_x' 'stig_y'
+        self.afss_mode = 'stig_y'  # 'focus' 'stig_x' 'stig_y'  # allows to define type of afss series to be used at the beginning of acquisition
         self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
         self.afss_drift_corrected = (self.cfg['autofocus']['afss_drift_corrected'].lower() == 'true')
-        self.afss_active = False
+        self.afss_active = False    # this might be beneficial for implementing continuation of afss series after pause
+        self.afss_interpolation_method = 'polyfit'  # fct to be used for interpolating the measured sharpness values
 
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
@@ -179,25 +180,25 @@ class Autofocus():
             for slice_nr in tile_dict:
                 y_vals.append(tile_dict[slice_nr][2])  # list of sharpness values
 
-            # SPLINE INTERPOLATION
-            f1 = interp1d(x_vals, y_vals, kind='cubic')
-            x_fit = np.linspace(min(x_vals), max(x_vals), num=101, endpoint=True)
-            y_fit = f1(x_fit)
-            x_opt, y_opt = x_fit[np.argmax(y_fit)], max(y_fit)  # x,y coordinates of optimal value
-            self.afss_wd_stig_corr_optima[tile_key] = x_opt
+            # INTERPOLATION
+            if self.afss_interpolation_method == 'spline':
+                # SPLINE INTERPOLATION
+                f1 = interp1d(x_vals, y_vals, kind='cubic')
+                x_fit = np.linspace(min(x_vals), max(x_vals), num=101, endpoint=True)
+                y_fit = f1(x_fit)
+                x_opt, y_opt = x_fit[np.argmax(y_fit)], max(y_fit)  # x,y coordinates of optimal value
+                self.afss_wd_stig_corr_optima[tile_key] = x_opt
+            elif self.afss_interpolation_method == 'polyfit':
+                # POLYNOMIAL FIT
+                cfs = np.polyfit(x_vals, y_vals, 2)
+                x_fit = np.linspace(min(x_vals), max(x_vals), num=1001, endpoint=True)
+                y_fit = cfs[0] * x_fit ** 2 + cfs[1] * x_fit + cfs[2]
+                x_opt = -cfs[1] / (2 * cfs[0])
+                y_opt = cfs[0] * x_opt ** 2 + cfs[1] * x_opt + cfs[2]
 
-            # # POLYNOMIAL FIT
-            # wd1, wd2 = 0, 5
-            # WDs = np.linspace(wd1, wd2, len(filenames))
-            # cfs = np.polyfit(WDs, coll_sharpness_edg, 2)
-            # x = np.linspace(wd1, wd2, 1000)
-            # y = cfs[0] * x ** 2 + cfs[1] * x + cfs[2]
-            # opt = -cfs[1] / (2 * cfs[0])
-
-
-            # Save resulting plot into stats folder
+            # Save resulting plots into the 'meta/stats/' folder
             if plot_results:
-                plot_path = self.generate_afss_plot_path(tile_key)
+                plot_path = self.generate_afss_plot_path(tile_key, interpolation=self.afss_interpolation_method)
                 self.plot_afss_series(x_vals=np.asarray(x_vals), y_vals=np.asarray(y_vals),
                                       x_fit=x_fit, y_fit=y_fit,
                                       x_opt=x_opt, y_opt=y_opt,
@@ -205,14 +206,15 @@ class Autofocus():
 
         self.afss_wd_stig_corr = {} # Reset the correction dictionary to prepare it for next afss run
 
-    def generate_afss_plot_path(self, tile_key: str) -> str:
+    def generate_afss_plot_path(self, tile_key: str, interpolation: str) -> str:
         # Generate plot name: basedir + 'slice_nr'_'grid_nr'_'tile_nr'_'focus/x_stig/y_stig_fit'.png
+        # Interpolation methods: 'spline', 'polyfit'
         tile_dict = self.afss_wd_stig_corr[tile_key]
         first_slice_nr = 's' + str(next(iter(tile_dict))).zfill(
             utils.SLICE_DIGITS)  # str of the first slice number of AFSS series
         g, t = tile_key.split('.')
         tile_key_full = ('g' + str(g).zfill(utils.GRID_DIGITS) + '_' + 't' + str(t).zfill(utils.TILE_DIGITS))
-        plot_name = "_".join([first_slice_nr, tile_key_full, self.afss_mode])
+        plot_name = "_".join([first_slice_nr, tile_key_full, self.afss_mode, interpolation])
         plot_fn = os.path.join(self.cfg['acq']['base_dir'], 'meta', 'stats', plot_name + '.png')
         return plot_fn
 
