@@ -1253,9 +1253,9 @@ class Acquisition:
                             utils.log_info('AFSS', msg)
                             self.add_to_main_log('ASFF' + msg)
                     else:
-                        msg = f'Applying {self.autofocus.afss_mode} corrections to all tracked tiles:'
+                        msg = f'Applying {self.autofocus.afss_mode} corrections to all tracked tiles'
                         utils.log_info('AFSS', msg)
-                        self.add_to_main_log('AFSS' + msg)
+                        self.add_to_main_log('AFSS  : ' + msg)
 
                     for tile_key in log_msgs:
                         msg = log_msgs[tile_key]

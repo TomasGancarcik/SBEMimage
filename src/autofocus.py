@@ -102,7 +102,7 @@ class Autofocus():
         self.afss_wd_stig_orig = {}  # original values before the AFSS started: dict = {tile_keys: [wd, (sx,sy)]}
         self.afss_wd_stig_corr = {}  #  dict = {tile_keys: {slice_nrs: [wd, (sx,sy), sharpness, img_full_path]}}
         self.afss_wd_stig_corr_optima = {}  # Computed corrections AFSS: dict = {tile_keys: wd/stig opt.val}
-        self.afss_mode = 'stig_y'  # 'focus' 'stig_x' 'stig_y'  # allows to define type of afss series to be used at the beginning of acquisition
+        self.afss_mode = 'focus'  # 'focus' 'stig_x' 'stig_y'  # allows to define type of afss series to be used at the beginning of acquisition
         self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
         self.afss_drift_corrected = (self.cfg['autofocus']['afss_drift_corrected'].lower() == 'true')
         self.afss_active = False    # this might be beneficial for implementing continuation of afss series after pause
@@ -195,6 +195,7 @@ class Autofocus():
                 y_fit = cfs[0] * x_fit ** 2 + cfs[1] * x_fit + cfs[2]
                 x_opt = -cfs[1] / (2 * cfs[0])
                 y_opt = cfs[0] * x_opt ** 2 + cfs[1] * x_opt + cfs[2]
+                self.afss_wd_stig_corr_optima[tile_key] = x_opt
 
             # Save resulting plots into the 'meta/stats/' folder
             if plot_results:
