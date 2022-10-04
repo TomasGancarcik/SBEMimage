@@ -646,7 +646,8 @@ class Acquisition:
             # automated focus/stig series, otherwise set to 0
             self.afss_wd_delta, self.afss_stig_x_delta, self.afss_stig_y_delta = 0, 0, 0
             self.afss_deltas = [0, 0, 0]
-            # List of tiles to be processed for AFSS during the cut cycle
+            # Perform afss comutations during cut cycle:
+            self.afss_compute_drifts = False
             self.do_afss_corrections = False
             # Reset AFSS corrections
             self.autofocus.reset_afss_corrections()
@@ -1225,16 +1226,24 @@ class Acquisition:
                         'CTRL: Error: Differences in WD/STIG too large.')
 
             # --------------- Processing of the Automated Focus/Stigmator series ----------------- #
-            elif self.do_afss_corrections:
+            if self.afss_compute_drifts:
+                self.autofocus.afss_compute_pair_drifts()
+                # print('computing drifts')
+
+            if self.do_afss_corrections:
+                utils.log_info('AFSS', 'Processing series.')
+                self.add_to_main_log('AFSS: Processing series.')
                 # Recompute sharpness if AFSS drift correction is active otherwise use (masked) sharpness values
                 # computed during acquisition by image inspector
+                # start_afss_corrections = time()
                 if self.autofocus.afss_drift_corrected:
                     self.autofocus.process_afss_collections()
                 # Compute corrections
                 self.autofocus.fit_afss_collections()
-                utils.log_info('AFSS', 'Processing series.')
-                self.add_to_main_log('AFSS: Processing series.')
+
+
                 if self.autofocus.afss_new_vals_verified():  # AFSS corrections passed thresholding tests:
+                    start_afss_apply = time()
                     # Apply corrections to tracked tiles
                     mean_diff, diffs, log_msgs = self.autofocus.apply_afss_corrections()
 
@@ -1267,6 +1276,7 @@ class Acquisition:
                     self.add_to_main_log(f'AFSS: {self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
                     utils.log_info('AFSS', f'{self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
                     self.autofocus.afss_active = False
+                    # end_afss_apply = time()
                 # In case AFSS results do not pass thresholding:
                 else:
                     msg = 'Differences in WD/STIG (AFSS) too large. Resetting original values.'
@@ -1281,6 +1291,15 @@ class Acquisition:
                     utils.log_info('AFSS',
                                    f'{self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
                     self.autofocus.afss_active = False
+
+                # end_afss_corrections = time()
+                # dur_afss_corr = end_afss_corrections - start_afss_corrections
+                # dur_fit_all = end_afss_fit - start_afss_fit
+                # dur_afss_apply = end_afss_apply - start_afss_apply
+                # print(f'Fitting duration total: {dur_fit_all}')
+                # print(f'Applying duration total: {dur_afss_apply}')
+                # print(f'Total duration: {dur_afss_corr}')
+
             # --------------- EOF Processing of the Automated Focus/Stigmator series ------------- #
 
             else:
@@ -1932,6 +1951,7 @@ class Acquisition:
 
         # For Automated Focus/Stigmator series (method 4), apply the WD or Stigmator perturbations
         self.do_afss_corrections = False
+        self.afss_compute_drifts = False
         ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
 
         # Postpone AFSS activation by one slice if offset is zero and if
@@ -2006,6 +2026,8 @@ class Acquisition:
             # Process entire set of focus/stig series after series were acquired ('do_cut' method)
             #  TODO: Following if should also have a binary condition check for successful
             #  TODO: series acquisition (preferably without pausing the acquisition)
+            if 0 < self.autofocus.afss_current_round <= self.autofocus.afss_rounds - 1:
+                self.afss_compute_drifts = True
             if self.autofocus.afss_current_round == self.autofocus.afss_rounds - 1:
                 self.do_afss_corrections = True
 

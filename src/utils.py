@@ -41,6 +41,7 @@ from skimage.registration import phase_cross_correlation
 from scipy.ndimage import fourier_shift
 from scipy.ndimage.interpolation import shift
 from typing import Tuple
+from time import time
 
 
 # Default and minimum size of the Viewport canvas.
@@ -986,7 +987,7 @@ def load_image_collection(files: list) -> np.ndarray:
 
 def shift_collection(ic: np.ndarray, cumm_shifts: np.ndarray) -> np.ndarray:
     for i in range(np.shape(ic)[0]):
-        if i==0:
+        if i == 0:
             pass
         else:
             sample_img = ic[i]
@@ -1004,8 +1005,8 @@ def register_image_collection(ic: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         im1 = ic[i]
         im2 = ic[i + 1]
         # Do not use (upsample_factor >= 1) as it spoils the image information!
-        shift, _, __ = phase_cross_correlation(im1, im2, upsample_factor=1)
-        shifts.append(shift)
+        shift_vec, _, __ = phase_cross_correlation(im1, im2, upsample_factor=1)
+        shifts.append(shift_vec)
     cumm_shifts = np.cumsum(shifts, axis=0)
     ic_reg = shift_collection(ic, cumm_shifts)
     return ic_reg, cumm_shifts

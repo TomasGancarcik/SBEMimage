@@ -31,8 +31,10 @@ from scipy.signal import correlate2d, fftconvolve
 import autofocus_mapfost
 from scipy.interpolate import interp1d
 from matplotlib import pyplot as plt
+
 plt.rcParams['figure.figsize'] = (12, 8)
 plt.rcParams.update({'font.size': 12})
+
 
 class Autofocus():
 
@@ -95,17 +97,21 @@ class Autofocus():
         self.afss_stig_x_delta = json.loads(self.cfg['autofocus']['afss_stig_x_delta'])  # percent
         self.afss_stig_y_delta = json.loads(self.cfg['autofocus']['afss_stig_y_delta'])  # percent
         self.afss_rounds = json.loads(self.cfg['autofocus']['afss_rounds'])  # number of induced focus/stig deviations
-        self.afss_offset = json.loads(self.cfg['autofocus']['afss_offset'])  # skip N slices before first AFSS activation
+        self.afss_offset = json.loads(
+            self.cfg['autofocus']['afss_offset'])  # skip N slices before first AFSS activation
         self.afss_current_round = 0  # position of current WD/stig deviation within AFSS series
         self.afss_next_activation = 0  # slice nr of nearest planned AFSS run
         self.afss_perturbation_series = []  # series that holds factors by which is the wd/stig delta multiplied
         self.afss_wd_stig_orig = {}  # original values before the AFSS started: dict = {tile_keys: [wd, (sx,sy)]}
-        self.afss_wd_stig_corr = {}  #  dict = {tile_keys: {slice_nrs: [wd, (sx,sy), sharpness, img_full_path]}}
+        self.afss_wd_stig_corr = {}  # dict = {tile_keys: {slice_nrs: [wd, (sx,sy), sharpness, img_full_path]}}
         self.afss_wd_stig_corr_optima = {}  # Computed corrections AFSS: dict = {tile_keys: wd/stig opt.val}
-        self.afss_mode = self.cfg['autofocus']['afss_mode']  # 'focus' 'stig_x' 'stig_y'  # allows to define type of afss series to be used at the beginning of acquisition
-        self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
+        self.afss_mode = self.cfg['autofocus'][
+            'afss_mode']  # 'focus' 'stig_x' 'stig_y'  # allows to define type of afss series to be used at the beginning of acquisition
+        self.afss_consensus_mode = int(
+            self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
         self.afss_drift_corrected = (self.cfg['autofocus']['afss_drift_corrected'].lower() == 'true')
-        self.afss_active = False    # this might be beneficial for implementing continuation of afss series after pause
+        # self.afss_compute_drifts = False    # if drift correction is active, compute shift vectors of tracked tiles after each cut
+        self.afss_active = False  # this might be beneficial for implementing continuation of afss series after pause
         self.afss_interpolation_method = 'polyfit'  # fct to be used for interpolating the measured sharpness values
         self.afss_autostig_active = (self.cfg['autofocus']['afss_autostig_active'].lower() == 'true')
 
@@ -137,28 +143,45 @@ class Autofocus():
         self.cfg['autofocus']['afss_mode'] = str(self.afss_mode)
 
     # ================ Below: methods for Automated focus/stig series method ==================
-    def process_afss_collections(self):
+
+    def afss_compute_pair_drifts(self):
         for tile_key in self.afss_wd_stig_corr:
-            print(f'processing collection: {tile_key} ')
+            # print(f'processing drifts: {tile_key} ')
             filenames = []
-            basenames = []
             for slice_nr in self.afss_wd_stig_corr[tile_key]:
                 img_path = self.afss_wd_stig_corr[tile_key][slice_nr][3]
                 filenames.append(img_path)
+            newest_img_pair_fns = filenames[-2:]
+            ic = utils.load_image_collection(newest_img_pair_fns)
+            _, shift_vec = utils.register_image_collection(ic)
+            self.afss_wd_stig_corr[tile_key][slice_nr].append(shift_vec)
+
+    def process_afss_collections(self):
+        for tile_key in self.afss_wd_stig_corr:
+            # print(f'processing collection: {tile_key} ')
+            start_key = time()
+            filenames = []
+            basenames = []
+            shifts = []
+            for i, slice_nr in enumerate(self.afss_wd_stig_corr[tile_key]):
+                img_path = self.afss_wd_stig_corr[tile_key][slice_nr][3]
+                filenames.append(img_path)
                 basenames.append(os.path.basename(img_path))
-            # print(f'collection filenames: {filenames} \n')
+                if i != 0:  # Skip reading shift vector of first image as this was not registered to anything
+                    shifts.append(self.afss_wd_stig_corr[tile_key][slice_nr][4][0])
+            cumm_shifts = np.cumsum(shifts, axis=0)
             ic = utils.load_image_collection(filenames)
-            ic_reg, cumm_shifts = utils.register_image_collection(ic)
+            ic_reg = utils.shift_collection(ic, cumm_shifts)
             ic_cr = utils.crop_image_collection(ic_reg, cumm_shifts)
             coll_sharpness = utils.get_collection_sharpness(ic_cr, metric='contrast')  # based on custom mask defined
             # by shape of images in the collection
+
             # Fill the results' dict with sharpness values from drift-corrected image collection
             for i, slice_nr in enumerate(self.afss_wd_stig_corr[tile_key]):
-                print(f'Populating {tile_key}, slice_nr: {slice_nr} with sharpness value: {coll_sharpness[i]}\n')
+                # print(f'Populating {tile_key}, slice_nr: {slice_nr} with sharpness value: {coll_sharpness[i]}\n')
                 self.afss_wd_stig_corr[tile_key][slice_nr][2] = coll_sharpness[i]
                 reg_img_path = os.path.join(self.cfg['acq']['base_dir'], 'meta', 'stats', basenames[i])
                 skimage.io.imsave(reg_img_path, ic_cr[i])
-        print(f'processing collections finished...')
 
     def fit_afss_collections(self, plot_results=True):
         mode = self.afss_mode
@@ -172,15 +195,15 @@ class Autofocus():
 
             # read the values (wd/stig_x/stig_y, sharpness)
             if mode == 'focus':
-                x_orig = self.afss_wd_stig_orig[tile_key][0]    # for plotting purposes
+                x_orig = self.afss_wd_stig_orig[tile_key][0]  # for plotting purposes
                 for slice_nr in tile_dict:
                     x_vals.append(tile_dict[slice_nr][0])  # WD series
             elif mode == 'stig_x':
-                x_orig = self.afss_wd_stig_orig[tile_key][1][0] # for plotting purposes
+                x_orig = self.afss_wd_stig_orig[tile_key][1][0]  # for plotting purposes
                 for slice_nr in tile_dict:
                     x_vals.append(tile_dict[slice_nr][1][0])  # StigX deviation
             elif mode == 'stig_y':
-                x_orig = self.afss_wd_stig_orig[tile_key][1][1] # for plotting purposes
+                x_orig = self.afss_wd_stig_orig[tile_key][1][1]  # for plotting purposes
                 for slice_nr in tile_dict:
                     x_vals.append(tile_dict[slice_nr][1][1])  # StigX deviation
             for slice_nr in tile_dict:
@@ -212,7 +235,7 @@ class Autofocus():
                                       x_orig=x_orig,
                                       path=plot_path)
 
-        self.afss_wd_stig_corr = {} # Reset the correction dictionary to prepare it for next afss run
+        self.afss_wd_stig_corr = {}  # Reset the correction dictionary to prepare it for next afss run
 
     def generate_afss_plot_path(self, tile_key: str, interpolation: str) -> str:
         # Generate plot name: basedir + 'slice_nr'_'grid_nr'_'tile_nr'_'focus/x_stig/y_stig_fit'.png
@@ -234,14 +257,14 @@ class Autofocus():
                          path: str
                          ):
 
-        if self.afss_consensus_mode == 0:   # averaging mode
+        if self.afss_consensus_mode == 0:  # averaging mode
             avg_corr = self.get_average_afss_correction()
 
-        if self.afss_mode == 'focus':   # rescale x axis to millimetres
-            x_vals *= 10**3
-            x_fit *=10**3
-            x_opt *=10**3
-            x_orig *=10**3
+        if self.afss_mode == 'focus':  # rescale x axis to millimetres
+            x_vals *= 10 ** 3
+            x_fit *= 10 ** 3
+            x_opt *= 10 ** 3
+            x_orig *= 10 ** 3
             round_digits = 6
             unit = 'mm'
         else:
@@ -253,15 +276,15 @@ class Autofocus():
         ax.plot(x_fit, y_fit, '-', label=f'Interpolation {self.afss_interpolation_method}.')
         ax.axvline(x_orig, color='k', linestyle=':', label=f'Previous setting: {round(x_orig, round_digits)} {unit}')
         ax.plot(x_opt, y_opt, 'o', label=f'New optimum at: {round(x_opt, round_digits)} {unit}, '
-                                         f'diff = {round(x_opt-x_orig, round_digits)} {unit}')
+                                         f'diff = {round(x_opt - x_orig, round_digits)} {unit}')
         if self.afss_consensus_mode == 0:
             ax.axvline(x_orig + avg_corr, color='g', linestyle='--',
-                           label=f'New setting (average delta {round(avg_corr, round_digits)} applied): '
-                                 f'{round(x_orig + avg_corr, round_digits)} {unit}')
+                       label=f'New setting (average delta {round(avg_corr, round_digits)} applied): '
+                             f'{round(x_orig + avg_corr, round_digits)} {unit}')
         ax.legend()
         ax.set_title(str.split(os.path.basename(path), '.')[0] + '_series')
         xlabels = {'focus': 'Working distance [mm]', 'stig_x': 'StigX [%]', 'stig_y': 'StigY [%]'}
-        plt.xlabel([val for key, val in xlabels.items() if key==self.afss_mode][0])
+        plt.xlabel([val for key, val in xlabels.items() if key == self.afss_mode][0])
         plt.ylabel('Sharpness [arb.u]')
         plt.savefig(path, dpi=100)
 
@@ -341,7 +364,7 @@ class Autofocus():
                     wd_new = self.afss_wd_stig_corr_optima[tile_key]
                     diffs[tile_key] = wd_new - wd_orig  # for logging purposes
                     self.gm[g][t].wd = wd_new
-                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((wd_new - wd_orig)*10**6, 3)} um.'
+                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((wd_new - wd_orig) * 10 ** 6, 3)} um.'
                     # utils.log_info(msgs[tile_key])
                 else:
                     #
@@ -401,7 +424,6 @@ class Autofocus():
         #     self.gm[grid_index][tile_index].stig_xy = self.afss_wd_stig_orig[key][1]
 
     # ================ EOF methods for Automated focus/stig series method ==================
-
 
     def approximate_wd_stig_in_grid(self, grid_index):
         """Approximate the working distance and stigmation parameters for all
