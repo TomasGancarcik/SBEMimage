@@ -3174,8 +3174,8 @@ class AutofocusSettingsDlg(QDialog):
         self.comboBox_afss_consensus_mode.setCurrentIndex(self.autofocus.afss_consensus_mode)
         self.checkBox_afss_drift_corrected.setChecked(self.autofocus.afss_drift_corrected)
         self.checkBox_afss_autostig_active.setChecked(self.autofocus.afss_autostig_active)
-        self.checkBox_afss_autostig_active.stateChanged.connect(
-            self.update_afss_mode)
+        # self.checkBox_afss_autostig_active.stateChanged.connect(
+        #     self.update_afss_mode)
 
         # Disable some settings if MagC mode is active
         if magc_mode:
@@ -3244,9 +3244,9 @@ class AutofocusSettingsDlg(QDialog):
         else:
             self.lineEdit_refTiles.setEnabled(True)
 
-    def update_afss_mode(self):
-        if not self.checkBox_afss_autostig_active.isChecked():
-            self.autofocus.afss_mode = 'focus'
+    # def update_afss_mode(self):
+    #     if not self.checkBox_afss_autostig_active.isChecked():
+    #         self.autofocus.afss_mode = 'focus'
 
     def accept(self):
         error_str = ''
