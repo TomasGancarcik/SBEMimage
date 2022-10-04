@@ -1939,10 +1939,8 @@ class Acquisition:
             self.gm.fit_apply_aberration_gradient()
 
         ####    AFSS     #####
-
         # For Automated Focus/Stigmator series (method 4), apply the WD or Stigmator perturbations
-        self.do_afss_corrections = False  # Do not perform AFSS processing after stack start/restart
-        self.afss_compute_drifts = False  # Do not compute ref. tiles' drifts for firs image in the series
+
         # If Autostig has been switched off in the meantime in AF dlg win,set next mode 'focus'
         if not self.autofocus.afss_autostig_active:
             self.autofocus.next_afss_mode()
@@ -2020,13 +2018,17 @@ class Acquisition:
                     f'AFSS: Automated {self.autofocus.afss_mode.capitalize()} series active ({self.autofocus.afss_current_round + 1}/{self.autofocus.afss_rounds})')
                 self.add_to_main_log(f'AFSS: delta_stig(x,y): {np.around(delta_stig, 2)} %')
 
-            # Process entire set of focus/stig series after series were acquired ('do_cut' method)
-            #  TODO: Following if should also have a binary condition check for successful
-            #  TODO: series acquisition (preferably without pausing the acquisition)
+            # Compute ref. tiles' drifts for slices only if we are within series, but omit first slice (reference image)
             if 0 < self.autofocus.afss_current_round <= self.autofocus.afss_rounds - 1:
                 self.afss_compute_drifts = True
+            else:
+                self.afss_compute_drifts = False
+                
+            # Process entire set of focus/stig series after series were acquired (during 'do_cut')
             if self.autofocus.afss_current_round == self.autofocus.afss_rounds - 1:
                 self.do_afss_corrections = True
+            else:
+                self.do_afss_corrections = False
 
         ####    EOF AFSS     #####
 
