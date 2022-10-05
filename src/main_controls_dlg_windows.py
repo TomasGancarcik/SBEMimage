@@ -3170,7 +3170,7 @@ class AutofocusSettingsDlg(QDialog):
         self.doubleSpinBox_afss_stigXDiff.setValue(self.autofocus.afss_stig_x_delta)
         self.doubleSpinBox_afss_stigYDiff.setValue(self.autofocus.afss_stig_y_delta)
         self.spinBox_afss_rounds.setValue(self.autofocus.afss_rounds)
-        self.comboBox_afss_consensus_mode.addItems(['Average', 'Specific'])
+        self.comboBox_afss_consensus_mode.addItems(['Average', 'Specific', 'Specific: Focus, Average: Stig'])
         self.comboBox_afss_consensus_mode.setCurrentIndex(self.autofocus.afss_consensus_mode)
         self.checkBox_afss_drift_corrected.setChecked(self.autofocus.afss_drift_corrected)
         self.checkBox_afss_autostig_active.setChecked(self.autofocus.afss_autostig_active)

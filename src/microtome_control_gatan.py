@@ -34,9 +34,9 @@ class Microtome_3View(Microtome):
       DMcom.ack:  Confirms that a command has been received and processed.
       DMcom.ac2:  Confirms that a full cut cycle has been completed.
       DMcom.wng:  Signals a warning (a problem occurred, but could be resolved).
-      DMcom.err:  Signals that a critical error occured.
+      DMcom.err:  Signals that a critical error occurred.
 
-    The 3View knife parameters (knife speeds, osciallation on/off) cannot be
+    The 3View knife parameters (knife speeds, oscillation on/off) cannot be
     changed remotely via SBEMimage; they must be set in DM before the
     acquisition starts. The pre-acquisition dialog box asks the user
     to ensure these settings match the DM settings (for logging purposes).
@@ -81,7 +81,7 @@ class Microtome_3View(Microtome):
                                        'mismatch')
                 # Update motor speeds in DM script
                 success = self.update_motor_speeds_in_dm_script()
-                # If update unsuccesful, set new error state unless microtome
+                # If update unsuccessful, set new error state unless microtome
                 # is already in an error state after reading the coordinates.
                 if not success and self.error_state == Error.none:
                     self.error_state = Error.dm_init
@@ -482,7 +482,7 @@ class Microtome_3View(Microtome):
             self.error_state = Error.dm_comm_response
             self.error_info = ('microtome.do_full_cut: command not '
                                'processed by DM script')
-            # Wait for another 15 sec maximum until cut is confirmed (.ac2
+            # Wait for another 15 sec maximum until cut is confirmed (.ac2)
             # file found or error file found.
             for i in range(15):
                 sleep(1)

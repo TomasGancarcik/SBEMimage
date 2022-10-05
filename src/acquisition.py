@@ -1246,11 +1246,17 @@ class Acquisition:
                     mean_diff, diffs, log_msgs = self.autofocus.apply_afss_corrections()
 
                     # Log info about results of either focus or Stigmator series
-                    if self.autofocus.afss_consensus_mode == 0:  # mode 'Average' over all tracked tiles
+                    if self.autofocus.afss_consensus_mode == 0 or 2:  # mode 'Average' over all tracked tiles
                         if self.autofocus.afss_mode == 'focus':
-                            msg = f'Applying average WD correction {round(mean_diff * 10 ** 6, 3)} um to all tracked tiles.'
-                            utils.log_info('AFSS', msg)
-                            self.add_to_main_log('AFSS' + msg)
+                            if self.autofocus.afss_consensus_mode == 0:
+                                msg = f'Applying average WD correction {round(mean_diff * 10 ** 6, 3)} um to all tracked ' \
+                                      f'tiles.'
+                                utils.log_info('AFSS', msg)
+                                self.add_to_main_log('AFSS' + msg)
+                            elif self.autofocus.afss_consensus_mode == 2:
+                                msg = f'Applying focus corrections to all tracked tiles'
+                                utils.log_info('AFSS', msg)
+                                self.add_to_main_log('AFSS  : ' + msg)
                         elif self.autofocus.afss_mode == 'stig_x':
                             msg = f'Applying average StigX correction {round(mean_diff, 3)} % to all tracked tiles.'
                             utils.log_info('AFSS', msg)
@@ -1259,7 +1265,7 @@ class Acquisition:
                             msg = f'Applying average StigY correction {round(mean_diff, 3)} % to all tracked tiles.'
                             utils.log_info('AFSS', msg)
                             self.add_to_main_log('ASFF' + msg)
-                    else:
+                    elif self.autofocus.afss_consensus_mode == 1:
                         msg = f'Applying {self.autofocus.afss_mode} corrections to all tracked tiles'
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS  : ' + msg)
@@ -2023,7 +2029,7 @@ class Acquisition:
                 self.afss_compute_drifts = True
             else:
                 self.afss_compute_drifts = False
-                
+
             # Process entire set of focus/stig series after series were acquired (during 'do_cut')
             if self.autofocus.afss_current_round == self.autofocus.afss_rounds - 1:
                 self.do_afss_corrections = True

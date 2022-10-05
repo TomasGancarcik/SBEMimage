@@ -8,7 +8,7 @@
 #   See LICENSE.txt in the project root folder.
 # ==============================================================================
 
-"""This modules provides various constants and helper functions."""
+""" This module provides various constants and helper functions."""
 
 import os
 import datetime
@@ -16,32 +16,30 @@ import re
 import logging
 import threading
 import math
-import cv2
-import numpy as np
 import glob
-
-from cv2 import Sobel
-from skimage.draw import disk
-from skimage import img_as_ubyte
-from skimage.io import imread, imsave, ImageCollection
 from os.path import basename
 from enum import Enum
 from time import sleep
 from queue import Queue
 from logging import StreamHandler
 from logging.handlers import RotatingFileHandler
-from shapely.geometry import Polygon
-from shapely.geometry import Point
-from skimage.transform import ProjectiveTransform
-from serial.tools import list_ports
-from PyQt5.QtCore import QObject, pyqtSignal
+from typing import Tuple
+
+import numpy as np
+import cv2
+from cv2 import Sobel
+from skimage.draw import disk
+from skimage import img_as_ubyte
+from skimage.io import imread, imsave, ImageCollection
 from skimage.measure import ransac
 from skimage.util import crop
 from skimage.registration import phase_cross_correlation
+from skimage.transform import ProjectiveTransform
 from scipy.ndimage import fourier_shift
 from scipy.ndimage.interpolation import shift
-from typing import Tuple
-from time import time
+from shapely.geometry import Polygon, Point
+from serial.tools import list_ports
+from PyQt5.QtCore import QObject, pyqtSignal
 
 
 # Default and minimum size of the Viewport canvas.

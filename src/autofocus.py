@@ -105,10 +105,10 @@ class Autofocus():
         self.afss_wd_stig_orig = {}  # original values before the AFSS started: dict = {tile_keys: [wd, (sx,sy)]}
         self.afss_wd_stig_corr = {}  # dict = {tile_keys: {slice_nrs: [wd, (sx,sy), sharpness, img_full_path]}}
         self.afss_wd_stig_corr_optima = {}  # Computed corrections AFSS: dict = {tile_keys: wd/stig opt.val}
-        self.afss_mode = self.cfg['autofocus']['afss_mode']  # 'focus' 'stig_x' 'stig_y'  # allows to define type of
+        self.afss_mode = self.cfg['autofocus']['afss_mode']  # 'focus' 'stig_x' 'stig_y'  # allows defining type of
         # afss series to be used at the beginning of acquisition
-
-        self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average' or 1: 'Tile specific'
+        self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average', 1: 'Tile specific'
+        # or 2: 'Focus (Specific), Stig (Average)
         self.afss_drift_corrected = (self.cfg['autofocus']['afss_drift_corrected'].lower() == 'true')
         self.afss_active = False  # this might be beneficial for implementing continuation of afss series after pause
         self.afss_interpolation_method = 'polyfit'  # fct to be used for interpolating the measured sharpness values
@@ -255,8 +255,8 @@ class Autofocus():
                          x_orig: float,
                          path: str
                          ):
-
-        if self.afss_consensus_mode == 0:  # averaging mode
+        # averaging modes
+        if self.afss_consensus_mode == 0 or (self.afss_consensus_mode == 2 and self.afss_mode != 'focus'):
             avg_corr = self.get_average_afss_correction()
 
         if self.afss_mode == 'focus':  # rescale x axis to millimetres
@@ -276,7 +276,7 @@ class Autofocus():
         ax.axvline(x_orig, color='k', linestyle=':', label=f'Previous setting: {round(x_orig, round_digits)} {unit}')
         ax.plot(x_opt, y_opt, 'o', label=f'New optimum at: {round(x_opt, round_digits)} {unit}, '
                                          f'diff = {round(x_opt - x_orig, round_digits)} {unit}')
-        if self.afss_consensus_mode == 0:
+        if self.afss_consensus_mode == 0 or (self.afss_consensus_mode == 2 and self.afss_mode != 'focus'):
             ax.axvline(x_orig + avg_corr, color='g', linestyle='--',
                        label=f'New setting (average delta {round(avg_corr, round_digits)} applied): '
                              f'{round(x_orig + avg_corr, round_digits)} {unit}')
@@ -338,7 +338,7 @@ class Autofocus():
     def apply_afss_corrections(self) -> Tuple[float, dict, dict]:
         # utils.log_info('AFSS', 'Applying corrections to WD/STIG:')
         # TODO refactor
-        consensus_modes = ['Average', 'tile_specific']
+        consensus_modes = ['Average', 'tile_specific', 'focus_specific_stig_average']
         avg_mode = consensus_modes[self.afss_consensus_mode]
         mode = self.afss_mode
         """Apply individual tile corrections."""
@@ -347,7 +347,7 @@ class Autofocus():
         diffs = {}
         msgs = {}
         mean_diff = None
-        if avg_mode == 'Average':
+        if self.afss_consensus_mode == 0 or (self.afss_consensus_mode == 2 and self.afss_mode != 'focus'):
             mean_diff = self.get_average_afss_correction()
 
         for tile_key in self.afss_wd_stig_corr_optima:
@@ -359,7 +359,7 @@ class Autofocus():
                     wd_new = self.afss_wd_stig_corr_optima[tile_key]
                     diffs[tile_key] = wd_new - wd_orig  # for logging purposes
                     msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((wd_new - wd_orig) * 10 ** 6, 3)} um.'
-                elif avg_mode == 'tile_specific':
+                elif avg_mode == 'tile_specific' or 'focus_specific_stig_average':
                     wd_new = self.afss_wd_stig_corr_optima[tile_key]
                     diffs[tile_key] = wd_new - wd_orig  # for logging purposes
                     self.gm[g][t].wd = wd_new
@@ -372,7 +372,7 @@ class Autofocus():
                 self.afss_wd_stig_orig[tile_key][0] = self.gm[g][t].wd
             elif mode == 'stig_x':
                 stig_x_orig, stig_y_orig = self.afss_wd_stig_orig[tile_key][1]
-                if avg_mode == 'Average':
+                if avg_mode == 'Average' or 'focus_specific_stig_average':
                     self.gm[g][t].stig_xy = [stig_x_orig + mean_diff, stig_y_orig]
                     stig_x_new = self.afss_wd_stig_corr_optima[tile_key]
                     diffs[tile_key] = stig_x_new - stig_x_orig
@@ -386,7 +386,7 @@ class Autofocus():
                 self.afss_wd_stig_orig[tile_key][1] = self.gm[g][t].stig_xy
             elif mode == 'stig_y':
                 stig_x_orig, stig_y_orig = self.afss_wd_stig_orig[tile_key][1]
-                if avg_mode == 'Average':
+                if avg_mode == 'Average' or 'focus_specific_stig_average':
                     self.gm[g][t].stig_xy = [stig_x_orig, stig_y_orig + mean_diff]
                     stig_y_new = self.afss_wd_stig_corr_optima[tile_key]
                     diffs[tile_key] = stig_y_new - stig_y_orig
