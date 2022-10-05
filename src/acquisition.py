@@ -1944,10 +1944,11 @@ class Acquisition:
                 self.do_autofocus_before_grid_acq(grid_index)
             self.gm.fit_apply_aberration_gradient()
 
-        ####    AFSS     #####
+        ####    AFSS     ####
         # For Automated Focus/Stigmator series (method 4), apply the WD or Stigmator perturbations
-
-        # If Autostig has been switched off in the meantime in AF dlg win,set next mode 'focus'
+        self.afss_compute_drifts = False
+        self.do_afss_corrections = False
+        # If Autostig has been switched off in the meantime in AF dlg win, set next mode 'focus'
         if not self.autofocus.afss_autostig_active:
             self.autofocus.next_afss_mode()
 
@@ -1970,8 +1971,10 @@ class Acquisition:
         # Perform Focus or StigX or StigY setting with correct iteration within series
         if self.autofocus.afss_active:
             # Compute focus/stig perturbations according to current slice
-            self.autofocus.get_afss_factors()  # series of multiplication factors
             self.autofocus.afss_current_round = self.slice_counter - self.autofocus.afss_next_activation
+            if self.autofocus.afss_current_round == 0:
+                self.autofocus.get_afss_factors(shuffle=True)   # multiplication factors to get WD/Stig deviations
+                # print(f'Shuffled series: {self.autofocus.afss_perturbation_series}')
             fct = self.autofocus.afss_perturbation_series[self.autofocus.afss_current_round]
             self.afss_deltas = fct * np.asarray((self.autofocus.afss_wd_delta,
                                                  self.autofocus.afss_stig_x_delta,
@@ -2027,14 +2030,11 @@ class Acquisition:
             # Compute ref. tiles' drifts for slices only if we are within series, but omit first slice (reference image)
             if 0 < self.autofocus.afss_current_round <= self.autofocus.afss_rounds - 1:
                 self.afss_compute_drifts = True
-            else:
-                self.afss_compute_drifts = False
 
             # Process entire set of focus/stig series after series were acquired (during 'do_cut')
             if self.autofocus.afss_current_round == self.autofocus.afss_rounds - 1:
                 self.do_afss_corrections = True
-            else:
-                self.do_afss_corrections = False
+
 
         ####    EOF AFSS     #####
 

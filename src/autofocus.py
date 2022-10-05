@@ -15,25 +15,22 @@ intervals on selected tiles. (2) Heuristic algorithm as used in Briggman
 et al. (2011), described in Appendix A of Binding et al. (2012).
 """
 
-import json
 import os.path
+import random
+from time import sleep, time
 from typing import Union, Tuple, Optional, List, Any
-
-import numpy as np
 from math import sqrt, exp, sin, cos
 from statistics import mean
 
+import json
 import skimage.io
-
-import utils
-from time import sleep, time
-from scipy.signal import correlate2d, fftconvolve
-import autofocus_mapfost
+import numpy as np
+from scipy.signal import fftconvolve
 from scipy.interpolate import interp1d
 from matplotlib import pyplot as plt
 
-plt.rcParams['figure.figsize'] = (12, 8)
-plt.rcParams.update({'font.size': 12})
+import autofocus_mapfost
+import utils
 
 
 class Autofocus():
@@ -145,7 +142,7 @@ class Autofocus():
 
     def afss_compute_pair_drifts(self):
         for tile_key in self.afss_wd_stig_corr:
-            # print(f'processing drifts: {tile_key} ')
+            # print(f'Processing drifts: {tile_key} ')
             filenames = []
             for slice_nr in self.afss_wd_stig_corr[tile_key]:
                 img_path = self.afss_wd_stig_corr[tile_key][slice_nr][3]
@@ -157,8 +154,7 @@ class Autofocus():
 
     def process_afss_collections(self):
         for tile_key in self.afss_wd_stig_corr:
-            # print(f'processing collection: {tile_key} ')
-            start_key = time()
+            # print(f'Processing collection: {tile_key} ')
             filenames = []
             basenames = []
             shifts = []
@@ -186,12 +182,10 @@ class Autofocus():
         mode = self.afss_mode
         # print(self.afss_wd_stig_corr)
         for tile_key in self.afss_wd_stig_corr:
-            # print(f'fitting collection: {tile_key}')
+            # print(f'Fitting collection: {tile_key}')
             x_vals, y_vals = [], []
-            opt = 0.1
-            cfs = []
             tile_dict = self.afss_wd_stig_corr[tile_key]  # values of particular tile to be processed
-
+            print(f'tile dict: {tile_dict}')
             # read the values (wd/stig_x/stig_y, sharpness)
             if mode == 'focus':
                 x_orig = self.afss_wd_stig_orig[tile_key][0]  # for plotting purposes
@@ -271,6 +265,8 @@ class Autofocus():
             unit = '%'
 
         fig, ax = plt.subplots()
+        plt.rcParams['figure.figsize'] = (12, 8)
+        plt.rcParams.update({'font.size': 12})
         ax.plot(x_vals, y_vals, 'o', label='Data')
         ax.plot(x_fit, y_fit, '-', label=f'Interpolation {self.afss_interpolation_method}.')
         ax.axvline(x_orig, color='k', linestyle=':', label=f'Previous setting: {round(x_orig, round_digits)} {unit}')
@@ -300,9 +296,12 @@ class Autofocus():
             utils.log_info('Warning: undetected AFSS mode. Next run will be of type: Focus.')
             self.afss_mode = 'focus'
 
-    def get_afss_factors(self):
+    def get_afss_factors(self, shuffle: bool):
         #  get list of WD or Stig perturbations to be used in automated focus/stig series
-        self.afss_perturbation_series = np.linspace(-1, 1, self.afss_rounds)
+        series = np.linspace(-1, 1, self.afss_rounds)
+        if shuffle:
+            random.shuffle(series)
+        self.afss_perturbation_series = series
 
     def afss_new_vals_verified(self) -> bool:
         mode = self.afss_mode
