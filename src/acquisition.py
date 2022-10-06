@@ -1243,14 +1243,17 @@ class Acquisition:
                 # Verify that AFSS corrections passed thresholding tests:
                 if self.autofocus.afss_new_vals_verified():
                     # Apply corrections to tracked tiles
-                    mean_diff, diffs, log_msgs = self.autofocus.apply_afss_corrections()
-
+                    mean_diff, diffs, log_msgs, nr_of_outliers = self.autofocus.apply_afss_corrections()
+                    if self.autofocus.afss_reject_outliers:
+                        msg = f'Discarding {nr_of_outliers} outliers from averaging.'
+                        utils.log_info('AFSS', msg)
+                        self.add_to_main_log('AFSS' + msg)
                     # Log info about results of either focus or Stigmator series
-                    if self.autofocus.afss_consensus_mode == 0 or 2:  # mode 'Average' over all tracked tiles
+                    if self.autofocus.afss_consensus_mode == 0 or 2:  # mode 'Average' or combined
                         if self.autofocus.afss_mode == 'focus':
                             if self.autofocus.afss_consensus_mode == 0:
-                                msg = f'Applying average WD correction {round(mean_diff * 10 ** 6, 3)} um to all tracked ' \
-                                      f'tiles.'
+                                msg = f'Applying average WD correction {round(mean_diff * 10 ** 6, 3)} um to all ' \
+                                      f'tracked tiles.'
                                 utils.log_info('AFSS', msg)
                                 self.add_to_main_log('AFSS' + msg)
                             elif self.autofocus.afss_consensus_mode == 2:
@@ -1978,7 +1981,9 @@ class Acquisition:
                 for tile_index in ref_tiles:
                     tile_key = f'{grid_index}.{tile_index}'
                     ref_tiles_keys.append(tile_key)
-                self.autofocus.get_afss_factors(tile_keys=ref_tiles_keys, shuffle=False, hyper_shuffle=False)
+                self.autofocus.get_afss_factors(tile_keys=ref_tiles_keys,
+                                                shuffle=self.autofocus.afss_shuffle,
+                                                hyper_shuffle=self.autofocus.afss_hyper_shuffle)
                 # print(f'Shuffled series: {self.autofocus.afss_perturbation_series}')
             # fct = self.autofocus.afss_perturbation_series[self.autofocus.afss_current_round]
             # self.afss_deltas = fct * np.asarray((self.autofocus.afss_wd_delta,

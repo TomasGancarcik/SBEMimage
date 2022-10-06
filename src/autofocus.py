@@ -111,6 +111,9 @@ class Autofocus():
         self.afss_interpolation_method = 'polyfit'  # fct to be used for interpolating the measured sharpness values
         self.afss_autostig_active = (self.cfg['autofocus']['afss_autostig_active'].lower() == 'true')
         self.afss_hyper_perturbation_series = {}
+        self.afss_shuffle = True
+        self.afss_hyper_shuffle = False
+        self.afss_reject_outliers = True
 
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
@@ -251,7 +254,7 @@ class Autofocus():
                          ):
         # averaging modes
         if self.afss_consensus_mode == 0 or (self.afss_consensus_mode == 2 and self.afss_mode != 'focus'):
-            avg_corr = self.get_average_afss_correction()
+            avg_corr, _ = self.get_average_afss_correction(do_filtering=self.afss_reject_outliers)
 
         if self.afss_mode == 'focus':  # rescale x axis to millimetres
             x_vals *= 10 ** 3
@@ -331,10 +334,11 @@ class Autofocus():
                          and diff_sy <= self.max_stig_y_diff)
         return is_below
 
-    def get_average_afss_correction(self) -> float:
+    def get_average_afss_correction(self, do_filtering: bool) -> float:
+        #  Function for mode='Average' in f(apply_afss_corrections)
         mode = self.afss_mode
-        # Function for mode='Average' in f(apply_afss_corrections)
         diffs = []
+        nr_of_filtered = 0
         for tile_key in self.afss_wd_stig_corr_optima:
             opt = self.afss_wd_stig_corr_optima[tile_key]
             if mode == 'focus':
@@ -344,7 +348,11 @@ class Autofocus():
                 diffs.append(opt - self.afss_wd_stig_orig[tile_key][1][0])
             elif mode == 'stig_y':
                 diffs.append(opt - self.afss_wd_stig_orig[tile_key][1][1])
-        return np.mean(diffs)
+        if do_filtering:
+            diffs_filtered = utils.reject_outliers(np.asarray(diffs))
+            nr_of_filtered = len(diffs) - len(diffs_filtered)
+            diffs = diffs_filtered
+        return np.mean(diffs), nr_of_filtered
 
     def apply_afss_corrections(self) -> Tuple[float, dict, dict]:
         # utils.log_info('AFSS', 'Applying corrections to WD/STIG:')
@@ -359,7 +367,7 @@ class Autofocus():
         msgs = {}
         mean_diff = None
         if self.afss_consensus_mode == 0 or (self.afss_consensus_mode == 2 and self.afss_mode != 'focus'):
-            mean_diff = self.get_average_afss_correction()
+            mean_diff, nr_of_outs = self.get_average_afss_correction(do_filtering=self.afss_reject_outliers)
 
         for tile_key in self.afss_wd_stig_corr_optima:
             g, t = map(int, str.split(tile_key, '.'))
@@ -410,7 +418,7 @@ class Autofocus():
                 # Update original values by new results
                 self.afss_wd_stig_orig[tile_key][1] = self.gm[g][t].stig_xy
 
-        return mean_diff, diffs, msgs
+        return mean_diff, diffs, msgs, nr_of_outs
 
     # TODO: redundant, staged for removal
     def update_afss_wd_stig_orig(self, tile_key, value):
