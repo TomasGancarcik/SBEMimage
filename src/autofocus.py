@@ -98,7 +98,7 @@ class Autofocus():
             self.cfg['autofocus']['afss_offset'])  # skip N slices before first AFSS activation
         self.afss_current_round = 0  # position of current WD/stig deviation within AFSS series
         self.afss_next_activation = 0  # slice nr of nearest planned AFSS run
-        self.afss_perturbation_series = []  # series that holds factors by which is the wd/stig delta multiplied
+        self.afss_perturbation_series = {}  # series that holds factors by which is the wd/stig delta multiplied
         self.afss_wd_stig_orig = {}  # original values before the AFSS started: dict = {tile_keys: [wd, (sx,sy)]}
         self.afss_wd_stig_corr = {}  # dict = {tile_keys: {slice_nrs: [wd, (sx,sy), sharpness, img_full_path]}}
         self.afss_wd_stig_corr_optima = {}  # Computed corrections AFSS: dict = {tile_keys: wd/stig opt.val}
@@ -110,6 +110,7 @@ class Autofocus():
         self.afss_active = False  # this might be beneficial for implementing continuation of afss series after pause
         self.afss_interpolation_method = 'polyfit'  # fct to be used for interpolating the measured sharpness values
         self.afss_autostig_active = (self.cfg['autofocus']['afss_autostig_active'].lower() == 'true')
+        self.afss_hyper_perturbation_series = {}
 
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
@@ -185,7 +186,6 @@ class Autofocus():
             # print(f'Fitting collection: {tile_key}')
             x_vals, y_vals = [], []
             tile_dict = self.afss_wd_stig_corr[tile_key]  # values of particular tile to be processed
-            print(f'tile dict: {tile_dict}')
             # read the values (wd/stig_x/stig_y, sharpness)
             if mode == 'focus':
                 x_orig = self.afss_wd_stig_orig[tile_key][0]  # for plotting purposes
@@ -296,12 +296,23 @@ class Autofocus():
             utils.log_info('Warning: undetected AFSS mode. Next run will be of type: Focus.')
             self.afss_mode = 'focus'
 
-    def get_afss_factors(self, shuffle: bool):
+    def get_afss_factors(self, tile_keys: dict, shuffle: bool, hyper_shuffle: bool):
         #  get list of WD or Stig perturbations to be used in automated focus/stig series
         series = np.linspace(-1, 1, self.afss_rounds)
         if shuffle:
             random.shuffle(series)
-        self.afss_perturbation_series = series
+        if not hyper_shuffle:
+            for key in tile_keys:
+                if not hyper_shuffle:
+                    self.afss_perturbation_series[key] = series
+        else:
+            fcts = np.tile(series, (len(tile_keys), 1))
+            for line in fcts:
+                np.random.shuffle(line)
+            for i, key in enumerate(tile_keys):
+                self.afss_perturbation_series[key] = fcts[i, :]
+        print(self.afss_perturbation_series)
+
 
     def afss_new_vals_verified(self) -> bool:
         mode = self.afss_mode
