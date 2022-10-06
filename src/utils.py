@@ -1054,4 +1054,18 @@ def reject_outliers(data: np.ndarray, m = 2.) -> np.ndarray:
     s = d/mdev if mdev else 0.
     return data[s<m]
 
+
+def return_func_vals(cfs: np.ndarray, x_vals: np.ndarray) -> np.ndarray:
+    """" Compute values of quadratic function with coeeficients 'cfs' at specific dependent variables (x_vals)"""
+    func_vals = np.array([])
+    for x in x_vals:
+        y = cfs[0] * x ** 2 + cfs[1] * x + cfs[2]
+        func_vals = np.append(func_vals, y)
+    return func_vals
+
+
+def rmse(predictions: np.ndarray, targets: np.ndarray) -> float:
+    """" Compute root mean sqared error of fit values (predictions) to measured values (target)"""
+    return np.sqrt(np.mean((predictions-targets)**2))
+
 # -------------- EOF Sharpness computation utils --------------

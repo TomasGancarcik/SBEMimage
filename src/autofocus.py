@@ -221,6 +221,8 @@ class Autofocus():
                 x_opt = -cfs[1] / (2 * cfs[0])
                 y_opt = cfs[0] * x_opt ** 2 + cfs[1] * x_opt + cfs[2]
                 self.afss_wd_stig_corr_optima[tile_key] = x_opt
+                y_func = utils.return_func_vals(cfs, x_vals)
+                rmse_val = utils.rmse(y_func, y_vals)
 
             # Save resulting plots into the 'meta/stats/' folder
             if plot_results:
@@ -229,6 +231,7 @@ class Autofocus():
                                       x_fit=x_fit, y_fit=y_fit,
                                       x_opt=x_opt, y_opt=y_opt,
                                       x_orig=x_orig,
+                                      err=rmse_val,
                                       path=plot_path)
 
         self.afss_wd_stig_corr = {}  # Reset the correction dictionary to prepare it for next afss run
@@ -249,7 +252,7 @@ class Autofocus():
                          x_vals: np.ndarray, y_vals: np.ndarray,
                          x_fit: np.ndarray, y_fit: np.ndarray,
                          x_opt: float, y_opt: float,
-                         x_orig: float,
+                         x_orig: float, err: float,
                          path: str
                          ):
         # averaging modes
@@ -272,7 +275,7 @@ class Autofocus():
         plt.rcParams['figure.figsize'] = (12, 8)
         plt.rcParams.update({'font.size': 12})
         ax.plot(x_vals, y_vals, 'o', label='Data')
-        ax.plot(x_fit, y_fit, '-', label=f'Interpolation {self.afss_interpolation_method}.')
+        ax.plot(x_fit, y_fit, '-', label=f'Interpolation {self.afss_interpolation_method}, rmse = {np.round(err, 4)}')
         ax.axvline(x_orig, color='k', linestyle=':', label=f'Previous setting: {round(x_orig, round_digits)} {unit}')
         ax.plot(x_opt, y_opt, 'o', label=f'New optimum at: {round(x_opt, round_digits)} {unit}, '
                                          f'diff = {round(x_opt - x_orig, round_digits)} {unit}')
