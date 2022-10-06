@@ -258,6 +258,7 @@ class Autofocus():
             x_fit *= 10 ** 3
             x_opt *= 10 ** 3
             x_orig *= 10 ** 3
+            avg_corr *= 10**3
             round_digits = 6
             unit = 'mm'
         else:
@@ -311,7 +312,7 @@ class Autofocus():
                 np.random.shuffle(line)
             for i, key in enumerate(tile_keys):
                 self.afss_perturbation_series[key] = fcts[i, :]
-        print(self.afss_perturbation_series)
+        # print(self.afss_perturbation_series)
 
 
     def afss_new_vals_verified(self) -> bool:

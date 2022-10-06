@@ -1978,7 +1978,7 @@ class Acquisition:
                 for tile_index in ref_tiles:
                     tile_key = f'{grid_index}.{tile_index}'
                     ref_tiles_keys.append(tile_key)
-                self.autofocus.get_afss_factors(tile_keys=ref_tiles_keys, shuffle=False, hyper_shuffle=True)
+                self.autofocus.get_afss_factors(tile_keys=ref_tiles_keys, shuffle=False, hyper_shuffle=False)
                 # print(f'Shuffled series: {self.autofocus.afss_perturbation_series}')
             # fct = self.autofocus.afss_perturbation_series[self.autofocus.afss_current_round]
             # self.afss_deltas = fct * np.asarray((self.autofocus.afss_wd_delta,
@@ -1999,7 +1999,7 @@ class Acquisition:
                 if self.autofocus.afss_mode == 'focus':
                     # self.gm[grid_index][tile_index].wd += self.afss_deltas[0]
                     delta_wd = fct * self.autofocus.afss_wd_delta
-                    print(f'Tile: {tile_key}, fct={fct}, delta_wd = {delta_wd}')
+                    # print(f'Tile: {tile_key}, fct={fct}, delta_wd = {delta_wd}')
                     self.gm[grid_index][tile_index].wd += delta_wd
                 elif self.autofocus.afss_mode == 'stig_x':
                     # delta_stig = np.asarray((self.afss_deltas[1], 0))
