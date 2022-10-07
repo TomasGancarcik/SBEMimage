@@ -337,8 +337,10 @@ class Autofocus():
                          and diff_sy <= self.max_stig_y_diff)
         return is_below
 
-    def get_average_afss_correction(self, do_filtering: bool) -> float:
+    def get_average_afss_correction(self, do_filtering: bool) -> Tuple[float, int]:
         #  Function for mode='Average' in f(apply_afss_corrections)
+        # if self.afss_wd_stig_corr_optima == {}: # what if fitting did not succeeded for any of ref. tiles?
+        #     return self.afss_wd_stig_corr
         mode = self.afss_mode
         diffs = []
         nr_of_filtered = 0
@@ -368,11 +370,17 @@ class Autofocus():
         # mode = 'Average'  # compute average correction from results of all ref.tiles
         diffs = {}
         msgs = {}
-        mean_diff = None
+        mean_diff = 0.
+        nr_of_outs = 0
+
         if self.afss_consensus_mode == 0 or (self.afss_consensus_mode == 2 and self.afss_mode != 'focus'):
             mean_diff, nr_of_outs = self.get_average_afss_correction(do_filtering=self.afss_reject_outliers)
 
         for tile_key in self.afss_wd_stig_corr_optima:
+            # TODO if wd-stig-corr = {} ...restore original vals
+        # TODO: for tile_key in ref tiles:
+            # TODO: if tile_key not in self.afss_wd_stig_corr.keys():
+            #           if specific: restore, else: apply mean_diff
             g, t = map(int, str.split(tile_key, '.'))
             if mode == 'focus':
                 wd_orig = self.afss_wd_stig_orig[tile_key][0]
@@ -382,11 +390,15 @@ class Autofocus():
                     diffs[tile_key] = wd_new - wd_orig  # for logging purposes
                     msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((wd_new - wd_orig) * 10 ** 6, 3)} um.'
                 elif avg_mode == 'tile_specific' or 'focus_specific_stig_average':
+                    # TODO: if tile_key in self.afss_wd_stig_corr.keys():
                     wd_new = self.afss_wd_stig_corr_optima[tile_key]
-                    diffs[tile_key] = wd_new - wd_orig  # for logging purposes
                     self.gm[g][t].wd = wd_new
                     msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((wd_new - wd_orig) * 10 ** 6, 3)} um.'
                     # utils.log_info(msgs[tile_key])
+                    # TODO: else:
+                    #     wd_new = self.afss_wd_stig_orig[tile_key][0]
+                    #     self.gm[g][t].wd = wd_new
+                    #     msgs[tile_key] = f'AFSS: Tile {tile_key}: Warning, optimum not found. Restoring original WD = {round(wd_orig * 10**6, 3)} um.'
                 else:
                     #
                     utils.log_info('AFSS:', 'Wrong mode in apply_afss_corrections !')
