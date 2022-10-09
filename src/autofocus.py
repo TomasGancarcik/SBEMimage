@@ -192,11 +192,11 @@ class Autofocus():
             x_vals = np.asarray([], dtype=float)
             y_vals = np.asarray([], dtype=float)
             # read the values (wd/stig_x/stig_y, sharpness)
-            # d = {'focus': (0,0), 'stig_x': (1,0), 'stig_y': (1,1)}
-            # x_orig = self.afss_wd_stig_orig[tile_key][d[m][0]][d[m][1]]  # for plotting purposes
-            # for slice_nr in tile_dict:
-            #     x_vals = np.append(x_vals, tile_dict[slice_nr][d[m][0]][d[m][1]])  # WD, StigX or StigY series
-            #     y_vals = np.append(y_vals, tile_dict[slice_nr][2])  # List of sharpness values
+            d = {'focus': (0,0), 'stig_x': (1,0), 'stig_y': (1,1)}
+            x_orig = self.afss_wd_stig_orig[tile_key][d[m][0]][d[m][1]]  # for plotting purposes
+            for slice_nr in tile_dict:
+                x_vals = np.append(x_vals, tile_dict[slice_nr][d[m][0]][d[m][1]])  # WD, StigX or StigY series
+                y_vals = np.append(y_vals, tile_dict[slice_nr][2])  # List of sharpness values
 
             if mode == 'focus':
                 x_orig = self.afss_wd_stig_orig[tile_key][0][0]  # for plotting purposes
