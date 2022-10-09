@@ -28,7 +28,7 @@ class SEM_Mock(SEM):
 
     def __init__(self, config, sysconfig):
         super().__init__(config, sysconfig)
-        self.eht_on = False
+        self.eht_on = True
         self.mag = 1000
         self.dwell_time = 1
         self.frame_size_selector = self.STORE_RES_DEFAULT_INDEX_TILE
@@ -38,8 +38,10 @@ class SEM_Mock(SEM):
         self.last_known_x = 0
         self.last_known_y = 0
         self.last_known_z = 0
-        self.mock_type = "noise"
-        self.previous_acq_dir = None
+        # self.mock_type = "noise"
+        self.mock_type = "previous_acquisition"
+        # self.previous_acq_dir = None
+        self.previous_acq_dir = r"c:\Users\ganctoma\Downloads\20220524_Bo_juv20210731_run_10"
         self.detector = ''
         # Select default detector
         self.set_detector(self.syscfg['sem']['default_detector'])
@@ -91,7 +93,7 @@ class SEM_Mock(SEM):
 
     def has_fcc(self):
         return False
- 
+
     def is_fcc_on(self):
         raise NotImplementedError
 
@@ -151,12 +153,12 @@ class SEM_Mock(SEM):
 
     def apply_frame_settings(self, frame_size_selector, pixel_size, dwell_time):
         self.set_mag(int(self.MAG_PX_SIZE_FACTOR /
-            (self.STORE_RES[frame_size_selector][0] * pixel_size)))
+                         (self.STORE_RES[frame_size_selector][0] * pixel_size)))
         self.set_dwell_time(dwell_time)
         self.set_frame_size(frame_size_selector)
         scan_speed = self.DWELL_TIME.index(dwell_time)
         self.current_cycle_time = (
-            self.CYCLE_TIME[frame_size_selector][scan_speed] + 0.3)
+                self.CYCLE_TIME[frame_size_selector][scan_speed] + 0.3)
         if self.current_cycle_time < 0.8:
             self.current_cycle_time = 0.8
         return True
@@ -180,7 +182,7 @@ class SEM_Mock(SEM):
 
     def get_pixel_size(self):
         return self.MAG_PX_SIZE_FACTOR / (self.mag
-                   * self.STORE_RES[self.frame_size_selector][0])
+                                          * self.STORE_RES[self.frame_size_selector][0])
 
     def set_pixel_size(self, pixel_size):
         self.mag = int(self.MAG_PX_SIZE_FACTOR /
@@ -235,7 +237,6 @@ class SEM_Mock(SEM):
             tile_id = save_path[-2]
             mock_image_name = "_".join([mock_stack_name, grid_id, tile_id, slice_no])
             mock_image_path = os.path.join(self.previous_acq_dir, "tiles", grid_id, tile_id, mock_image_name)
-
 
         if os.path.isfile(mock_image_path):
             mock_image = io.imread(mock_image_path)

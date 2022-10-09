@@ -21,6 +21,7 @@ from time import sleep, time
 from typing import Union, Tuple, Optional, List, Any
 from math import sqrt, exp, sin, cos
 from statistics import mean
+import copy
 
 import json
 import skimage.io
@@ -99,9 +100,9 @@ class Autofocus():
         self.afss_current_round = 0  # position of current WD/stig deviation within AFSS series
         self.afss_next_activation = 0  # slice nr of nearest planned AFSS run
         self.afss_perturbation_series = {}  # series that holds factors by which is the wd/stig delta multiplied
-        self.afss_wd_stig_orig = {}  # original values before the AFSS started: dict = {tile_keys: [wd, (sx,sy)]}
-        self.afss_wd_stig_corr = {}  # dict = {tile_keys: {slice_nrs: [wd, (sx,sy), sharpness, img_full_path]}}
-        self.afss_wd_stig_corr_optima = {}  # Computed corrections AFSS: dict = {tile_keys: wd/stig opt.val}
+        self.afss_wd_stig_orig = {}  # original values before the AFSS started: d = {tile_keys:[[wd, dummy=0], (sx,sy)]}
+        self.afss_wd_stig_corr = {}  # dict={tile_keys: {slice_nrs: [(wd, dummy=0), (sx,sy), sharpness, img_full_path]}}
+        self.afss_wd_stig_corr_optima = {}  # Computed corrections AFSS: dict = {tile_keys: [wd/stig opt.val, fit_rmse]}
         self.afss_mode = self.cfg['autofocus']['afss_mode']  # 'focus' 'stig_x' 'stig_y'  # allows defining type of
         # afss series to be used at the beginning of acquisition
         self.afss_consensus_mode = int(self.cfg['autofocus']['afss_consensus_mode'])  # 0: 'Average', 1: 'Tile specific'
@@ -187,23 +188,30 @@ class Autofocus():
         # print(self.afss_wd_stig_corr)
         for tile_key in self.afss_wd_stig_corr:
             # print(f'Fitting collection: {tile_key}')
-            x_vals, y_vals = [], []
-            tile_dict = self.afss_wd_stig_corr[tile_key]  # values of particular tile to be processed
+            tile_dict = self.afss_wd_stig_corr[tile_key]  # Values of particular tile to be processed
+            x_vals = np.asarray([], dtype=float)
+            y_vals = np.asarray([], dtype=float)
             # read the values (wd/stig_x/stig_y, sharpness)
+            # d = {'focus': (0,0), 'stig_x': (1,0), 'stig_y': (1,1)}
+            # x_orig = self.afss_wd_stig_orig[tile_key][d[m][0]][d[m][1]]  # for plotting purposes
+            # for slice_nr in tile_dict:
+            #     x_vals = np.append(x_vals, tile_dict[slice_nr][d[m][0]][d[m][1]])  # WD, StigX or StigY series
+            #     y_vals = np.append(y_vals, tile_dict[slice_nr][2])  # List of sharpness values
+
             if mode == 'focus':
-                x_orig = self.afss_wd_stig_orig[tile_key][0]  # for plotting purposes
+                x_orig = self.afss_wd_stig_orig[tile_key][0][0]  # for plotting purposes
                 for slice_nr in tile_dict:
-                    x_vals.append(tile_dict[slice_nr][0])  # WD series
+                    x_vals = np.append(x_vals, tile_dict[slice_nr][0][0])  # WD series
             elif mode == 'stig_x':
                 x_orig = self.afss_wd_stig_orig[tile_key][1][0]  # for plotting purposes
                 for slice_nr in tile_dict:
-                    x_vals.append(tile_dict[slice_nr][1][0])  # StigX deviation
+                    x_vals = np.append(x_vals, tile_dict[slice_nr][1][0])  # StigX deviation
             elif mode == 'stig_y':
                 x_orig = self.afss_wd_stig_orig[tile_key][1][1]  # for plotting purposes
                 for slice_nr in tile_dict:
-                    x_vals.append(tile_dict[slice_nr][1][1])  # StigX deviation
+                    x_vals = np.append(x_vals, tile_dict[slice_nr][1][1])  # StigX deviation
             for slice_nr in tile_dict:
-                y_vals.append(tile_dict[slice_nr][2])  # list of sharpness values
+                y_vals = np.append(y_vals, tile_dict[slice_nr][2])  # list of sharpness values
 
             # INTERPOLATION
             if self.afss_interpolation_method == 'spline':
@@ -212,7 +220,7 @@ class Autofocus():
                 x_fit = np.linspace(min(x_vals), max(x_vals), num=101, endpoint=True)
                 y_fit = f1(x_fit)
                 x_opt, y_opt = x_fit[np.argmax(y_fit)], max(y_fit)  # x,y coordinates of optimal value
-                self.afss_wd_stig_corr_optima[tile_key] = x_opt
+                self.afss_wd_stig_corr_optima[tile_key] = [x_opt, 0]
             elif self.afss_interpolation_method == 'polyfit':
                 # POLYNOMIAL FIT
                 cfs = np.polyfit(x_vals, y_vals, 2)
@@ -220,10 +228,15 @@ class Autofocus():
                 y_fit = cfs[0] * x_fit ** 2 + cfs[1] * x_fit + cfs[2]
                 x_opt = -cfs[1] / (2 * cfs[0])
                 y_opt = cfs[0] * x_opt ** 2 + cfs[1] * x_opt + cfs[2]
-                self.afss_wd_stig_corr_optima[tile_key] = x_opt
-                y_func = utils.return_func_vals(cfs, x_vals)
-                rmse_val = utils.rmse(y_func, y_vals)
-
+                if cfs[0] > 0:  # sharpness values follow expected (positive) quadratic behavior
+                    y_func = utils.return_func_vals(cfs, x_vals)
+                    rmse_val = utils.rmse(y_func, y_vals)
+                else:   # fit has bad 'orientation'
+                    rmse_val = -1
+                self.afss_wd_stig_corr_optima[tile_key] = [x_opt, rmse_val]
+                # print(f'y_vals: {y_vals}')
+                # print(f'y_func: {y_func}')
+                # print(f'rmse_val: {rmse_val}')
             # Save resulting plots into the 'meta/stats/' folder
             if plot_results:
                 plot_path = self.generate_afss_plot_path(tile_key, interpolation=self.afss_interpolation_method)
@@ -264,7 +277,8 @@ class Autofocus():
             x_fit *= 10 ** 3
             x_opt *= 10 ** 3
             x_orig *= 10 ** 3
-            avg_corr *= 10**3
+            if self.afss_consensus_mode == 0 or (self.afss_consensus_mode == 2 and self.afss_mode != 'focus'):
+                avg_corr *= 10**3
             round_digits = 6
             unit = 'mm'
         else:
@@ -275,7 +289,7 @@ class Autofocus():
         plt.rcParams['figure.figsize'] = (12, 8)
         plt.rcParams.update({'font.size': 12})
         ax.plot(x_vals, y_vals, 'o', label='Data')
-        ax.plot(x_fit, y_fit, '-', label=f'Interpolation {self.afss_interpolation_method}, rmse = {np.round(err, 4)}')
+        ax.plot(x_fit, y_fit, '-', label=f'Interpolation {self.afss_interpolation_method}, RMSE = {np.round(err, 4)}')
         ax.axvline(x_orig, color='k', linestyle=':', label=f'Previous setting: {round(x_orig, round_digits)} {unit}')
         ax.plot(x_opt, y_opt, 'o', label=f'New optimum at: {round(x_opt, round_digits)} {unit}, '
                                          f'diff = {round(x_opt - x_orig, round_digits)} {unit}')
@@ -285,8 +299,8 @@ class Autofocus():
                              f'{round(x_orig + avg_corr, round_digits)} {unit}')
         ax.legend()
         ax.set_title(str.split(os.path.basename(path), '.')[0] + '_series')
-        xlabels = {'focus': 'Working distance [mm]', 'stig_x': 'StigX [%]', 'stig_y': 'StigY [%]'}
-        plt.xlabel([val for key, val in xlabels.items() if key == self.afss_mode][0])
+        x_labels = {'focus': 'Working distance [mm]', 'stig_x': 'StigX [%]', 'stig_y': 'StigY [%]'}
+        plt.xlabel([val for key, val in x_labels.items() if key == self.afss_mode][0])
         plt.ylabel('Sharpness [arb.u]')
         plt.savefig(path, dpi=100)
 
@@ -320,35 +334,60 @@ class Autofocus():
                 self.afss_perturbation_series[key] = fcts[i, :]
         # print(self.afss_perturbation_series)
 
-
-    def afss_new_vals_verified(self) -> bool:
+    def afss_verify_results(self) -> bool:
         mode = self.afss_mode
-        # Check that all new WDs and Stigmator values of ref. tiles are below WD/Stig thresholds
-        is_below = True
+        rmse_limit = 1.0e-2
+        rejected_fits = {}
+        rejected_thr = {}
+        thr_ok = True
         diff_wd, diff_sx, diff_sy = 0, 0, 0
-        for tile_key, value in self.afss_wd_stig_corr_optima.items():
-            if mode == 'focus':
-                diff_wd = abs(value - self.afss_wd_stig_orig[tile_key][0])
-            elif mode == 'stig_x':
-                diff_sx = abs(value - self.afss_wd_stig_orig[tile_key][1][0])
-            elif mode == 'stig_y':
-                diff_sy = abs(value - self.afss_wd_stig_orig[tile_key][1][1])
-            is_below &= (diff_wd <= self.max_wd_diff and diff_sx <= self.max_stig_x_diff
-                         and diff_sy <= self.max_stig_y_diff)
-        return is_below
+
+        # First, remove corrupted results from optima dict, due unsuccessful fit(s)
+        d = self.afss_wd_stig_corr_optima
+        for t, vals in list(d.items()):
+            rmse_val = vals[1]
+            if rmse_val > rmse_limit or rmse_val == -1:
+                del d[t]
+                msg = f'Tile {t} rejected. RMSE: {rmse_val}'
+                rejected_fits[t] = (rmse_val, msg)
+        nr_of_reliable_fits = len(d)
+
+        # Second, check that computed optimal WD and Stigmator values of ALL ref. tiles are below WD/Stig thresholds
+        if nr_of_reliable_fits != 0:
+            for tile_key, value in self.afss_wd_stig_corr_optima.items():
+                if mode == 'focus':
+                    diff_wd = abs(value[0] - self.afss_wd_stig_orig[tile_key][0][0])
+                    if not diff_wd <= self.max_wd_diff:
+                        d1, d2 = round(diff_wd * 10 ** 6, 3), round(self.max_wd_diff * 10 ** 6, 3)
+                        msg = f'WD diff too large! {d1} (limit: {d2})'
+                        rejected_thr[tile_key](d1, msg)
+                elif mode == 'stig_x':
+                    diff_sx = abs(value[0] - self.afss_wd_stig_orig[tile_key][1][0])
+                    if not diff_sx <= self.max_stig_x_diff:
+                        d1, d2 = round(diff_sx, 3), round(self.max_stig_x_diff, 3)
+                        msg = f'StigX diff too large! {d1} (limit: {d2})'
+                        rejected_thr[tile_key](d1, msg)
+                elif mode == 'stig_y':
+                    diff_sy = abs(value[0] - self.afss_wd_stig_orig[tile_key][1][1])
+                    if not diff_sy <= self.max_stig_y_diff:
+                        d1, d2 = round(diff_sy, 3), round(self.max_stig_y_diff, 3)
+                        msg = f'StigY diff too large! {d1} (limit: {d2})'
+                        rejected_thr[tile_key](d1, msg)
+                # checking three conditions simultaneously is overkill (for now):
+                thr_ok &= (diff_wd <= self.max_wd_diff and
+                           diff_sx <= self.max_stig_x_diff and
+                           diff_sy <= self.max_stig_y_diff)
+        return nr_of_reliable_fits, rejected_fits, thr_ok, rejected_thr
 
     def get_average_afss_correction(self, do_filtering: bool) -> Tuple[float, int]:
         #  Function for mode='Average' in f(apply_afss_corrections)
-        # if self.afss_wd_stig_corr_optima == {}: # what if fitting did not succeeded for any of ref. tiles?
-        #     return self.afss_wd_stig_corr
         mode = self.afss_mode
         diffs = []
         nr_of_filtered = 0
-        for tile_key in self.afss_wd_stig_corr_optima:
-            opt = self.afss_wd_stig_corr_optima[tile_key]
+        for tile_key, vals in self.afss_wd_stig_corr_optima.items():
+            opt = vals[0]
             if mode == 'focus':
-                #
-                diffs.append(opt - self.afss_wd_stig_orig[tile_key][0])
+                diffs.append(opt - self.afss_wd_stig_orig[tile_key][0][0])
             elif mode == 'stig_x':
                 diffs.append(opt - self.afss_wd_stig_orig[tile_key][1][0])
             elif mode == 'stig_y':
@@ -360,11 +399,6 @@ class Autofocus():
         return np.mean(diffs), nr_of_filtered
 
     def apply_afss_corrections(self) -> Tuple[float, dict, dict]:
-        # utils.log_info('AFSS', 'Applying corrections to WD/STIG:')
-        # TODO refactor
-        consensus_modes = ['Average', 'tile_specific', 'focus_specific_stig_average']
-        avg_mode = consensus_modes[self.afss_consensus_mode]
-        mode = self.afss_mode
         """Apply individual tile corrections."""
         # mode = 'tile_specific'  # compute and apply corrections specific to each tile
         # mode = 'Average'  # compute average correction from results of all ref.tiles
@@ -373,88 +407,108 @@ class Autofocus():
         mean_diff = 0.
         nr_of_outs = 0
 
+        # TODO refactor
+        consensus_modes = ['Average', 'tile_specific', 'focus_specific_stig_average']
+        avg_mode = consensus_modes[self.afss_consensus_mode]
+        mode = self.afss_mode
+
         if self.afss_consensus_mode == 0 or (self.afss_consensus_mode == 2 and self.afss_mode != 'focus'):
             mean_diff, nr_of_outs = self.get_average_afss_correction(do_filtering=self.afss_reject_outliers)
 
-        for tile_key in self.afss_wd_stig_corr_optima:
-            # TODO if wd-stig-corr = {} ...restore original vals
-        # TODO: for tile_key in ref tiles:
-            # TODO: if tile_key not in self.afss_wd_stig_corr.keys():
-            #           if specific: restore, else: apply mean_diff
+        for tile_key in self.afss_wd_stig_orig:
             g, t = map(int, str.split(tile_key, '.'))
             if mode == 'focus':
-                wd_orig = self.afss_wd_stig_orig[tile_key][0]
+                wd_orig = self.afss_wd_stig_orig[tile_key][0][0]
                 if avg_mode == 'Average':
-                    self.gm[g][t].wd = mean_diff + wd_orig
-                    wd_new = self.afss_wd_stig_corr_optima[tile_key]
-                    diffs[tile_key] = wd_new - wd_orig  # for logging purposes
-                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((wd_new - wd_orig) * 10 ** 6, 3)} um.'
-                elif avg_mode == 'tile_specific' or 'focus_specific_stig_average':
-                    # TODO: if tile_key in self.afss_wd_stig_corr.keys():
-                    wd_new = self.afss_wd_stig_corr_optima[tile_key]
+                    wd_new = mean_diff + wd_orig
                     self.gm[g][t].wd = wd_new
-                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((wd_new - wd_orig) * 10 ** 6, 3)} um.'
-                    # utils.log_info(msgs[tile_key])
-                    # TODO: else:
-                    #     wd_new = self.afss_wd_stig_orig[tile_key][0]
-                    #     self.gm[g][t].wd = wd_new
-                    #     msgs[tile_key] = f'AFSS: Tile {tile_key}: Warning, optimum not found. Restoring original WD = {round(wd_orig * 10**6, 3)} um.'
-                else:
-                    #
-                    utils.log_info('AFSS:', 'Wrong mode in apply_afss_corrections !')
+                    # if fit was not successful, wd difference is determined from applied average delta_wd
+                    if tile_key not in self.afss_wd_stig_corr_optima:
+                        diffs[tile_key] = mean_diff
+                    else:
+                        wd_opt = self.afss_wd_stig_corr_optima[tile_key][0]
+                        diffs[tile_key] = wd_opt - wd_orig  # for logging purposes
+                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((diffs[tile_key]) * 10 ** 6, 3)} um.'
+                elif avg_mode == 'tile_specific' or 'focus_specific_stig_average':
+                    if tile_key not in self.afss_wd_stig_corr_optima.keys():
+                        wd_new = self.afss_wd_stig_orig[tile_key][0][0]
+                        diffs[tile_key] = 0
+                        msgs[tile_key] = \
+                            f'AFSS: Tile {tile_key}, fit not reliable. Original WD will be applied.'
+                    else:
+                        wd_new = self.afss_wd_stig_corr_optima[tile_key][0]
+                        diffs[tile_key] = wd_new - wd_orig
+                        msgs[tile_key] = \
+                            f'AFSS: Tile {tile_key}, delta WD = {round((diffs[tile_key]) * 10 ** 6, 3)} um.'
+                    self.gm[g][t].wd = wd_new
                 # Update original values by new results
-                self.afss_wd_stig_orig[tile_key][0] = self.gm[g][t].wd
+                self.afss_wd_stig_orig[tile_key][0][0] = self.gm[g][t].wd
             elif mode == 'stig_x':
                 stig_x_orig, stig_y_orig = self.afss_wd_stig_orig[tile_key][1]
                 if avg_mode == 'Average' or 'focus_specific_stig_average':
-                    self.gm[g][t].stig_xy = [stig_x_orig + mean_diff, stig_y_orig]
-                    stig_x_new = self.afss_wd_stig_corr_optima[tile_key]
-                    diffs[tile_key] = stig_x_new - stig_x_orig
-                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta StigX = {round(stig_x_new - stig_x_orig, 3)} %.'
-                elif avg_mode == 'tile_specific':
-                    stig_x_new = self.afss_wd_stig_corr_optima[tile_key]
+                    stig_x_new = mean_diff + stig_x_orig
                     self.gm[g][t].stig_xy = [stig_x_new, stig_y_orig]
-                    diffs[tile_key] = stig_x_new - stig_x_orig
-                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta StigX = {round(stig_x_new - stig_x_orig, 3)} %.'
+                    if tile_key not in self.afss_wd_stig_corr_optima:
+                        diffs[tile_key] = mean_diff
+                    else:
+                        stig_x_opt = self.afss_wd_stig_corr_optima[tile_key][0]
+                        diffs[tile_key] = stig_x_opt - stig_x_orig
+                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta StigX = {round(diffs[tile_key], 3)} %.'
+                elif avg_mode == 'tile_specific':
+                    if tile_key not in self.afss_wd_stig_corr_optima:
+                        self.gm[g][t].stig_xy = [stig_x_orig, stig_y_orig]
+                        diffs[tile_key] = 0
+                        msgs[tile_key] = \
+                            f'AFSS: Tile {tile_key}, fit not reliable. Original StigX will be applied.'
+                    else:
+                        stig_x_new = self.afss_wd_stig_corr_optima[tile_key][0]
+                        self.gm[g][t].stig_xy = [stig_x_new, stig_y_orig]
+                        diffs[tile_key] = stig_x_new - stig_x_orig
+                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta StigX = {round(diffs[tile_key], 3)} %.'
                 # Update original values by new results
                 self.afss_wd_stig_orig[tile_key][1] = self.gm[g][t].stig_xy
             elif mode == 'stig_y':
                 stig_x_orig, stig_y_orig = self.afss_wd_stig_orig[tile_key][1]
                 if avg_mode == 'Average' or 'focus_specific_stig_average':
-                    self.gm[g][t].stig_xy = [stig_x_orig, stig_y_orig + mean_diff]
-                    stig_y_new = self.afss_wd_stig_corr_optima[tile_key]
-                    diffs[tile_key] = stig_y_new - stig_y_orig
-                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta StigY = {round(stig_y_new - stig_y_orig, 3)} %.'
-                elif avg_mode == 'tile_specific':
-                    stig_y_new = self.afss_wd_stig_corr_optima[tile_key]
-                    diffs[tile_key] = stig_y_new - stig_y_orig
+                    stig_y_new = mean_diff + stig_y_orig
                     self.gm[g][t].stig_xy = [stig_x_orig, stig_y_new]
-                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta StigY = {round(stig_y_new - stig_y_orig, 3)} %.'
+                    if tile_key not in self.afss_wd_stig_corr_optima:
+                        diffs[tile_key] = mean_diff
+                    else:
+                        stig_y_opt = self.afss_wd_stig_corr_optima[tile_key][0]
+                        diffs[tile_key] = stig_y_opt - stig_y_orig
+                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta StigY = {round(diffs[tile_key], 3)} %.'
+                elif avg_mode == 'tile_specific':
+                    if tile_key not in self.afss_wd_stig_corr_optima:
+                        self.gm[g][t].stig_xy = [stig_x_orig, stig_y_orig]
+                        diffs[tile_key]  = 0
+                        msgs[tile_key] = \
+                            f'AFSS: Tile {tile_key}, fit not reliable. Original StigY will be applied.'
+                    else:
+                        stig_y_new = self.afss_wd_stig_corr_optima[tile_key][0]
+                        self.gm[g][t].stig_xy = [stig_x_orig, stig_y_new]
+                        diffs[tile_key] = stig_y_new - stig_y_orig
+                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta StigY = {round(diffs[tile_key], 3)} %.'
                 # Update original values by new results
                 self.afss_wd_stig_orig[tile_key][1] = self.gm[g][t].stig_xy
 
         return mean_diff, diffs, msgs, nr_of_outs
 
-    # TODO: redundant, staged for removal
-    def update_afss_wd_stig_orig(self, tile_key, value):
-        self.afss_wd_stig_orig[tile_key][0] = value
+    # # TODO: redundant, staged for removal
+    # def update_afss_wd_stig_orig(self, tile_key, value):
+    #     self.afss_wd_stig_orig[tile_key][0] = value
 
     def reset_afss_corrections(self):  # TODO: merge with 'reset_afss_series' ?
         self.afss_wd_stig_corr = {}
         self.afss_wd_stig_corr_optima = {}
 
-    def reset_afss_series(self):  # TODO: more explanationatory name
+    def reset_afss_series(self):  # TODO: more explanatory name
         # TODO check what if there are multiple grids with ref tiles (possibly also if inactivated grids)
         self.afss_current_round = 0
         for tile_key in self.afss_wd_stig_orig:
             grid_index, tile_index = map(int, str.split(tile_key, '.'))
-            self.gm[grid_index][tile_index].wd = self.afss_wd_stig_orig[tile_key][0]
+            self.gm[grid_index][tile_index].wd = self.afss_wd_stig_orig[tile_key][0][0]
             self.gm[grid_index][tile_index].stig_xy = self.afss_wd_stig_orig[tile_key][1]
-        # autofocus_ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
-        # for tile_index in autofocus_ref_tiles:
-        #     key = f'{grid_index}.{tile_index}'
-        #     self.gm[grid_index][tile_index].wd = self.afss_wd_stig_orig[key][0]
-        #     self.gm[grid_index][tile_index].stig_xy = self.afss_wd_stig_orig[key][1]
 
     # ================ EOF methods for Automated focus/stig series method ==================
 

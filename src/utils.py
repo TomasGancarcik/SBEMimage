@@ -1065,7 +1065,7 @@ def return_func_vals(cfs: np.ndarray, x_vals: np.ndarray) -> np.ndarray:
 
 
 def rmse(predictions: np.ndarray, targets: np.ndarray) -> float:
-    """" Compute root mean sqared error of fit values (predictions) to measured values (target)"""
+    """" Compute root mean squared error of fit values (predictions) to measured values (target)"""
     return np.sqrt(np.mean((predictions-targets)**2))
 
 # -------------- EOF Sharpness computation utils --------------
