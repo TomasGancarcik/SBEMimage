@@ -112,7 +112,7 @@ class Autofocus():
         self.afss_interpolation_method = 'polyfit'  # fct to be used for interpolating the measured sharpness values
         self.afss_autostig_active = (self.cfg['autofocus']['afss_autostig_active'].lower() == 'true')
         self.afss_hyper_perturbation_series = {}
-        self.afss_shuffle = True
+        self.afss_shuffle = False
         self.afss_hyper_shuffle = False
         self.afss_reject_outliers = True
 
@@ -171,9 +171,9 @@ class Autofocus():
                     shifts.append(self.afss_wd_stig_corr[tile_key][slice_nr][4][0])
             cumm_shifts = np.cumsum(shifts, axis=0)
             ic = utils.load_image_collection(filenames)
-            ic_reg = utils.shift_collection(ic, cumm_shifts)
-            ic_cr = utils.crop_image_collection(ic_reg, cumm_shifts)
-            coll_sharpness = utils.get_collection_sharpness(ic_cr, metric='contrast')  # based on custom mask defined
+            ic = utils.shift_collection(ic, cumm_shifts)
+            ic = utils.crop_image_collection(ic, cumm_shifts)
+            coll_sharpness = utils.get_collection_sharpness(ic, metric='contrast')  # based on custom mask defined
             # by shape of images in the collection
 
             # Fill the results' dict with sharpness values from drift-corrected image collection
@@ -181,7 +181,7 @@ class Autofocus():
                 # print(f'Populating {tile_key}, slice_nr: {slice_nr} with sharpness value: {coll_sharpness[i]}\n')
                 self.afss_wd_stig_corr[tile_key][slice_nr][2] = coll_sharpness[i]
                 reg_img_path = os.path.join(self.cfg['acq']['base_dir'], 'meta', 'stats', basenames[i])
-                skimage.io.imsave(reg_img_path, ic_cr[i])
+                skimage.io.imsave(reg_img_path, ic[i])
 
     def fit_afss_collections(self, plot_results=True):
         m = self.afss_mode
@@ -215,7 +215,7 @@ class Autofocus():
                 x_opt = -cfs[1] / (2 * cfs[0])
                 y_opt = cfs[0] * x_opt ** 2 + cfs[1] * x_opt + cfs[2]
 
-                if cfs[0] > 0:  # sharpness values follow expected (positive) quadratic behavior
+                if cfs[0] < 0:  # sharpness values follow expected (negative) quadratic behavior
                     y_func = utils.return_func_vals(cfs, x_vals)
                     rmse_val = utils.rmse(y_func, y_vals)
                 else:   # fit has bad 'orientation'
