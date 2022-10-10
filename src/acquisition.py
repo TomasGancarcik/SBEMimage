@@ -1241,10 +1241,19 @@ class Acquisition:
                 # Compute corrections
                 self.autofocus.fit_afss_collections()
                 # Verify that AFSS corrections passed thresholding tests:
-                if self.autofocus.afss_new_vals_verified():
+                nr_of_reliable_fits, rej_fits, thresholding_ok, rej_thr = self.autofocus.afss_verify_results()
+                if rej_fits:
+                    msg = f'Warning: Reliable results could not be found for following tiles:'
+                    utils.log_info('AFSS', msg)
+                    self.add_to_main_log('AFSS' + msg)
+                    for rej_tile_key, val in rej_fits.items():
+                        msg = val[1]
+                        utils.log_info('AFSS', msg)
+                        self.add_to_main_log('AFSS' + msg)
+                if nr_of_reliable_fits != 0 and thresholding_ok:
                     # Apply corrections to tracked tiles
-                    mean_diff, diffs, log_msgs, nr_of_outliers = self.autofocus.apply_afss_corrections()
-                    if self.autofocus.afss_reject_outliers:
+                    mean_diff, _, log_msgs, nr_of_outliers = self.autofocus.apply_afss_corrections()
+                    if self.autofocus.afss_reject_outliers and nr_of_outliers != 0:
                         msg = f'Discarding {nr_of_outliers} outliers from averaging.'
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS' + msg)
@@ -1268,7 +1277,7 @@ class Acquisition:
                             msg = f'Applying average StigY correction {round(mean_diff, 3)} % to all tracked tiles.'
                             utils.log_info('AFSS', msg)
                             self.add_to_main_log('ASFF' + msg)
-                    elif self.autofocus.afss_consensus_mode == 1:
+                    elif self.autofocus.afss_consensus_mode == 1:   # Consensus mode = Specific
                         msg = f'Applying {self.autofocus.afss_mode} corrections to all tracked tiles'
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS  : ' + msg)
@@ -1280,24 +1289,37 @@ class Acquisition:
                     self.autofocus.reset_afss_corrections()
                     self.autofocus.next_afss_mode()
                     self.autofocus.afss_next_activation += self.autofocus.interval
-                    self.add_to_main_log(
-                        f'AFSS: {self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
-                    utils.log_info('AFSS',
-                                   f'{self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
-                    self.autofocus.afss_active = False
-                # In case AFSS results do not pass thresholding:
-                else:
-                    msg = 'Differences in WD/STIG (AFSS) too large. Resetting original values.'
+                    msg = f'{self.autofocus.afss_mode.capitalize()} run will be triggered at ' \
+                          f'slice {self.autofocus.afss_next_activation}'
                     utils.log_info('AFSS', msg)
-                    self.add_to_main_log('AFSS: ' + msg)
+                    self.add_to_main_log(f'AFSS: ' + msg)
+                    self.autofocus.afss_active = False
+                # In case AFSS results do not pass thresholding or no good fit was found:
+                else:
+                    if nr_of_reliable_fits == 0:
+                        msg = f'Interpolation of all tracked tiles failed. ' \
+                               f'Resetting original {self.autofocus.afss_mode} values.'
+                        utils.log_info('AFSS', msg)
+                        self.add_to_main_log('AFSS: ' + msg)
+                    elif not thresholding_ok:
+                        msg = f'WD/STIG differences of following tiles out of allowed range: '
+                        utils.log_info('AFSS', msg)
+                        self.add_to_main_log('AFSS: ' + msg)
+                        for tile_key, val in rej_thr.items():
+                            msg = val[1]
+                            utils.log_info('AFSS', msg)
+                            self.add_to_main_log('AFSS: ' + msg)
+                        msg = f'Resetting original {self.autofocus.afss_mode} values.'
+                        utils.log_info('AFSS', msg)
+                        self.add_to_main_log('AFSS: ' + msg)
                     self.autofocus.reset_afss_series()
                     self.autofocus.reset_afss_corrections()
                     self.autofocus.next_afss_mode()
                     self.autofocus.afss_next_activation += self.autofocus.interval
-                    self.add_to_main_log(
-                        f'AFSS: {self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
-                    utils.log_info('AFSS',
-                                   f'{self.autofocus.afss_mode.capitalize()} run will be triggered at slice {self.autofocus.afss_next_activation}')
+                    msg = f'{self.autofocus.afss_mode.capitalize()} run will be triggered at ' \
+                          f'slice {self.autofocus.afss_next_activation}'
+                    utils.log_info('AFSS', msg)
+                    self.add_to_main_log('AFSS: ' + msg)
                     self.autofocus.afss_active = False
 
             # --------------- EOF Processing of the Automated Focus/Stigmator series ------------- #
@@ -1997,7 +2019,7 @@ class Acquisition:
                 if self.slice_counter == self.autofocus.afss_next_activation:
                     wd = self.gm[grid_index][tile_index].wd
                     stig_xy = np.asarray(self.gm[grid_index][tile_index].stig_xy)
-                    self.autofocus.afss_wd_stig_orig[tile_key] = [wd, stig_xy]
+                    self.autofocus.afss_wd_stig_orig[tile_key] = [[wd, 0], stig_xy]
 
                 # Apply WD/StigX/StigY perturbation
                 fct = self.autofocus.afss_perturbation_series[tile_key][self.autofocus.afss_current_round]
@@ -2398,7 +2420,7 @@ class Acquisition:
                 ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
                 for tile_index in ref_tiles:
                     key = f'{grid_index}.{tile_index}'
-                    self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig[key][0]
+                    self.gm[grid_index][tile_index].wd = self.autofocus.afss_wd_stig_orig[key][0][0]
                     self.gm[grid_index][tile_index].stig_xy = self.autofocus.afss_wd_stig_orig[key][1]
 
     def acquire_tile(self, grid_index, tile_index,
@@ -2727,8 +2749,8 @@ class Acquisition:
                         if tile_id not in self.autofocus.afss_wd_stig_corr:
                             self.autofocus.afss_wd_stig_corr[tile_id] = {}
 
-                        # entry = {self.slice_counter: [wd, arr([stig_x, stig_y]), sharpness, full_img_path]}
-                        entry = {self.slice_counter: [self.gm[grid_index][tile_index].wd,
+                        # entry = {self.slice_counter: [[wd, dummy=0], arr([stig_x, stig_y]), sharpness, full_img_path]}
+                        entry = {self.slice_counter: [[self.gm[grid_index][tile_index].wd, 0],
                                                       self.gm[grid_index][tile_index].stig_xy,
                                                       sharpness,
                                                       save_path]}
