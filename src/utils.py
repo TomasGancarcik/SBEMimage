@@ -1048,11 +1048,11 @@ def get_collection_sharpness(ic: np.ndarray, metric: str) -> list:
     return sh_arr
 
 # Based on: https://stackoverflow.com/questions/11686720/is-there-a-numpy-builtin-to-reject-outliers-from-a-list
-def reject_outliers(data: np.ndarray, m = 2.) -> np.ndarray:
+def filter_outliers(data: np.ndarray, m = 2.) -> np.ndarray:
     d = np.abs(data - np.median(data))
     mdev = np.median(d)
     s = d/mdev if mdev else 0.
-    return data[s<m]
+    return data[s < m]
 
 
 def return_func_vals(cfs: np.ndarray, x_vals: np.ndarray) -> np.ndarray:
