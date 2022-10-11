@@ -1235,12 +1235,10 @@ class Acquisition:
                 self.add_to_main_log('AFSS: Processing series.')
                 # Recompute sharpness if AFSS drift correction is active otherwise use (masked) sharpness values
                 # computed during acquisition by image inspector
-                # start_afss_corrections = time()
                 if self.autofocus.afss_drift_corrected:
                     self.autofocus.process_afss_collections()
                 # Compute corrections
                 self.autofocus.fit_afss_collections()
-
                 # Verify that AFSS corrections passed thresholding tests:
                 nr_of_reliable_fits, rej_fits, thresholding_ok, rej_thr = self.autofocus.afss_verify_results()
                 if rej_fits:
@@ -2750,8 +2748,7 @@ class Acquisition:
                                     'thresholds.')
                     # AFSS: Add sharpness value of current tile to the correction series:
                     #  correction series = {tile_id: {slice_nr: (tile_wd, tile_stig_xy, sharpness)}
-                    ref_tiles = self.gm[
-                        grid_index].autofocus_ref_tiles()  # TODO: consider passing it instead of creating
+                    ref_tiles = self.gm[grid_index].autofocus_ref_tiles()  # TODO: consider passing it instead of creating
                     if tile_accepted and tile_index in ref_tiles and self.autofocus.afss_active:
                         if tile_id not in self.autofocus.afss_wd_stig_corr:
                             self.autofocus.afss_wd_stig_corr[tile_id] = {}

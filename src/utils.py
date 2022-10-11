@@ -220,9 +220,9 @@ Errors = {
     Error.tile_image_compare: 'Tile image error (slice-by-slice comparison)',
     Error.autofocus_smartsem: 'Autofocus error (SmartSEM)',
     Error.autofocus_heuristic: 'Autofocus error (heuristic)',
-    Error.autofocus_afss: 'Autofocus error (Automated Focus/Stig series)', # TODO
     Error.wd_stig_difference: 'WD/STIG difference error',
     Error.metadata_server: 'Metadata server error',
+    Error.autofocus_afss: 'Autofocus error (Automated Focus/Stig series)',  # TODO
 
     # Reserved for user-defined errors
     Error.test_case: 'Test case error',
@@ -1038,7 +1038,7 @@ def get_collection_sharpness(ic: np.ndarray, metric: str) -> list:
     sh_arr = []
     mask = get_collection_mask(np.shape(ic[0]))
     #     print(f'mask shape: {np.shape(mask)}')
-    for i,img in enumerate(ic):
+    for i, img in enumerate(ic):
         if metric == 'contrast':
             sh_arr.append(np.std(img))
         elif metric == 'edges':
@@ -1056,7 +1056,7 @@ def filter_outliers(data: np.ndarray, m = 2.) -> np.ndarray:
 
 
 def return_func_vals(cfs: np.ndarray, x_vals: np.ndarray) -> np.ndarray:
-    """" Compute values of quadratic function with coeeficients 'cfs' at specific dependent variables (x_vals)"""
+    """" Compute values of quadratic function with coefficients 'cfs' at specific dependent variables (x_vals)"""
     func_vals = np.array([])
     for x in x_vals:
         y = cfs[0] * x ** 2 + cfs[1] * x + cfs[2]

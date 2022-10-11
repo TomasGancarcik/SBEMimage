@@ -330,12 +330,6 @@ class Autofocus():
         for tile_key, vals in self.afss_wd_stig_corr_optima.items():
             # optimum - original WD/StigX/StigY
             diffs.append(vals[0] - self.afss_wd_stig_orig[tile_key][d[m][0]][d[m][1]])
-            # if mode == 'focus':
-            #     diffs.append(opt - self.afss_wd_stig_orig[tile_key][0][0])
-            # elif mode == 'stig_x':
-            #     diffs.append(opt - self.afss_wd_stig_orig[tile_key][1][0])
-            # elif mode == 'stig_y':
-            #     diffs.append(opt - self.afss_wd_stig_orig[tile_key][1][1])
         if do_filtering:
             diffs_filtered = utils.filter_outliers(np.asarray(diffs))
             nr_of_filtered = len(diffs) - len(diffs_filtered)
@@ -455,8 +449,7 @@ class Autofocus():
             random.shuffle(series)
         if not hyper_shuffle:
             for key in tile_keys:
-                if not hyper_shuffle:
-                    self.afss_perturbation_series[key] = series
+                self.afss_perturbation_series[key] = series
         else:
             fcts = np.tile(series, (len(tile_keys), 1))
             for line in fcts:
@@ -465,7 +458,7 @@ class Autofocus():
                 self.afss_perturbation_series[key] = fcts[i, :]
         # print(self.afss_perturbation_series)
 
-    def reset_afss_corrections(self):  # TODO: merge with 'reset_afss_series' ?
+    def reset_afss_corrections(self):
         self.afss_wd_stig_corr = {}
         self.afss_wd_stig_corr_optima = {}
         self.afss_average_corr = None
