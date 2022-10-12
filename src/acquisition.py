@@ -2757,7 +2757,8 @@ class Acquisition:
                         entry = {self.slice_counter: [[self.gm[grid_index][tile_index].wd, 0],
                                                       self.gm[grid_index][tile_index].stig_xy,
                                                       sharpness,
-                                                      save_path]}
+                                                      save_path,
+                                                      stddev]}
                         self.autofocus.afss_wd_stig_corr[tile_id].update(entry)
                 else:
                     # Tile image file could not be loaded

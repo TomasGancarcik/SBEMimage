@@ -101,7 +101,8 @@ class Autofocus():
         self.afss_next_activation = 0  # slice nr of nearest planned AFSS run
         self.afss_perturbation_series = {}  # series that holds factors by which is the wd/stig delta multiplied
         self.afss_wd_stig_orig = {}  # original values before the AFSS started: d = {tile_keys:[[wd, dummy=0], (sx,sy)]}
-        self.afss_wd_stig_corr = {}  # dict={tile_keys: {slice_nrs: [(wd, dummy=0), (sx,sy), sharpness, img_full_path]}}
+        # dict = {tile_keys: {slice_nrs: [ (wd, dummy=0), (sx,sy), sharpness, img_full_path, stddev, [shift_vec] ]}}
+        self.afss_wd_stig_corr = {}
         self.afss_wd_stig_corr_optima = {}  # Computed corrections AFSS: dict = {tile_keys: [wd/stig opt.val, fit_rmse]}
         self.afss_mode = self.cfg['autofocus']['afss_mode']  # 'focus' 'stig_x' 'stig_y'  # allows defining type of
         # afss series to be used at the beginning of acquisition
@@ -148,7 +149,7 @@ class Autofocus():
 
     def afss_verify_results(self) -> Tuple[int, dict, bool, dict]:
         m = self.afss_mode
-        rmse_limit = 1.0e-2
+        rmse_limit = 1.0e-1
         rejected_fits = {}
         rejected_thr = {}
         thr_ok = True
@@ -210,7 +211,7 @@ class Autofocus():
                 filenames.append(img_path)
                 basenames.append(os.path.basename(img_path))
                 if i != 0:  # Skip reading shift vector of first image as this was not registered to anything
-                    shifts.append(self.afss_wd_stig_corr[tile_key][slice_nr][4][0])
+                    shifts.append(self.afss_wd_stig_corr[tile_key][slice_nr][5][0])
             cumm_shifts = np.cumsum(shifts, axis=0)
             ic = utils.load_image_collection(filenames)
             ic = utils.shift_collection(ic, cumm_shifts)
@@ -226,6 +227,10 @@ class Autofocus():
                 skimage.io.imsave(reg_img_path, ic[i])
 
     def fit_afss_collections(self, plot_results=True):
+        def norm_data(arr: np.ndarray) -> np.ndarray:
+            arr -= np.min(arr)
+            arr /= np.max(arr)
+            return arr
         m = self.afss_mode
         # print(self.afss_wd_stig_corr)
         for tile_key in self.afss_wd_stig_corr:
@@ -233,6 +238,7 @@ class Autofocus():
             tile_dict = self.afss_wd_stig_corr[tile_key]  # Values of particular tile to be processed
             x_vals = np.asarray([], dtype=float)
             y_vals = np.asarray([], dtype=float)
+            y_vals_std = np.asarray([], dtype=float)
 
             # read the values (wd/stig_x/stig_y, sharpness)
             d = {'focus': (0, 0), 'stig_x': (1, 0), 'stig_y': (1, 1)}
@@ -240,6 +246,8 @@ class Autofocus():
             for slice_nr in tile_dict:
                 x_vals = np.append(x_vals, tile_dict[slice_nr][d[m][0]][d[m][1]])  # WD, StigX or StigY series
                 y_vals = np.append(y_vals, tile_dict[slice_nr][2])  # List of sharpness values
+                y_vals_std = np.append(y_vals_std, tile_dict[slice_nr][4])  # List of 'contrast' values
+            y_vals = np.sqrt(norm_data(norm_data(y_vals)**2 + norm_data(y_vals_std)**2))  # Combined sharpness metric
 
             # INTERPOLATION
             if self.afss_interpolation_method == 'spline':

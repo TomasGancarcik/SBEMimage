@@ -37,6 +37,7 @@ from skimage.registration import phase_cross_correlation
 from skimage.transform import ProjectiveTransform
 from scipy.ndimage import fourier_shift
 from scipy.ndimage.interpolation import shift
+from scipy.ndimage import gaussian_filter
 from shapely.geometry import Polygon, Point
 from serial.tools import list_ports
 from PyQt5.QtCore import QObject, pyqtSignal
@@ -1068,5 +1069,11 @@ def rmse(predictions: np.ndarray, targets: np.ndarray) -> float:
     """" Compute root mean squared error of fit values (predictions) to measured values (target)"""
     return np.sqrt(np.mean((predictions-targets)**2))
 
+
+def compute_focus_index(img: np.ndarray) -> float:
+    gf1 = gaussian_filter(img, sigma=1, mode='reflect')
+    gf2 = gaussian_filter(img, sigma=4, mode='reflect')
+    fi = np.sum(np.sqrt((gf1 - gf2)**2)/len(img))
+    return fi
 
 # -------------- EOF Sharpness computation utils --------------
