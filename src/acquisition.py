@@ -30,7 +30,7 @@ from dateutil.relativedelta import relativedelta
 from PyQt5.QtWidgets import QMessageBox
 
 import utils
-from utils import Error, create_mask, save_mask
+from utils import Error
 
 
 class Acquisition:
@@ -646,11 +646,12 @@ class Acquisition:
             # automated focus/stig series, otherwise set to 0
             self.afss_wd_delta, self.afss_stig_x_delta, self.afss_stig_y_delta = 0, 0, 0
             self.afss_deltas = [0, 0, 0]
-            # Perform afss comutations during cut cycle:
+            # Perform afss computations during cut cycle:
             self.afss_compute_drifts = False
             self.do_afss_corrections = False
             # Reset AFSS corrections
             self.autofocus.reset_afss_corrections()
+            self.afss_fail_counter = {'focus': 0, 'stig_x': 0, 'stig_y': 0}
 
             # Discard previous tile statistics in image inspector that are
             # used for tile-by-tile comparisons and quality checks.
@@ -1033,9 +1034,6 @@ class Acquisition:
                 # redundant
                 utils.log_info('AFSS:', 'Resetting original WD/Stig values to reference tiles.')
                 self.add_to_main_log('AFSS: Resetting original WD/Stig values to reference tiles.')
-                # for grid_index in range(self.gm.number_grids):
-                #     self.autofocus.afss_set_orig_wd_stig(grid_index)
-                # self.autofocus.afss_set_orig_wd_stig(grid_index)
                 self.autofocus.afss_set_orig_wd_stig()
                 self.autofocus.reset_afss_corrections()
             # for AFSS delay purposes
@@ -1287,7 +1285,8 @@ class Acquisition:
                         msg = log_msgs[tile_key]
                         self.add_to_main_log(msg)
                         utils.log_info(msg.split(':')[0], msg.split(':')[1][1:])
-
+                    #   Reset respective fail counter if AFSS run was successful
+                    self.afss_fail_counter[self.autofocus.afss_mode] = 0
                     self.autofocus.reset_afss_corrections()
                     self.autofocus.next_afss_mode()
                     self.autofocus.afss_next_activation += self.autofocus.interval
@@ -1319,6 +1318,19 @@ class Acquisition:
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS: ' + msg)
                     self.autofocus.afss_set_orig_wd_stig()
+
+                    # Safety feature in case of AFSS failed too many times
+                    self.afss_fail_counter[self.autofocus.afss_mode] += 1
+                    afss_safe_mode = True
+                    max_fails = 5
+                    if any(v == max_fails for v in self.afss_fail_counter.values()) and afss_safe_mode:
+                        self.error_state = Error.autofocus_afss
+                        self.pause_acquisition(1)
+                        msg = f'AFSS failed to apply {self.autofocus.afss_mode} corrections too many times. ' \
+                              f'Pausing acquisition.'
+                        utils.log_error('CTRL', msg)
+                        self.add_to_main_log('CTRL: ' + msg)
+
                 self.autofocus.reset_afss_corrections()
                 self.autofocus.next_afss_mode()
                 self.autofocus.afss_next_activation += self.autofocus.interval
@@ -2696,9 +2708,9 @@ class Acquisition:
                     # New preview available, show it (if tile previews active)
                     self.main_controls_trigger.transmit('DRAW VP')
 
-                    if self.error_state in [Error.autofocus_smartsem, Error.autofocus_heuristic, Error.autofocus_afss,
+                    if self.error_state in [Error.autofocus_smartsem, Error.autofocus_heuristic,
                                             Error.wd_stig_difference]:
-                        # Don't accept tile if autofocus error has ocurred
+                        # Don't accept tile if autofocus error has occurred
                         tile_accepted = False
                     else:
                         # Check for frozen or incomplete frames
