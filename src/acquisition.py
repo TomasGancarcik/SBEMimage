@@ -2473,15 +2473,26 @@ class Acquisition:
                                     'range!')
                             elif (slice_by_slice_test_passed is not None
                                   and not slice_by_slice_test_passed):
-                                tile_accepted = False
-                                self.error_state = Error.tile_image_compare
-                                utils.log_error(
-                                    'CTRL',
-                                    'Tile above mean/SD slice-by-slice '
-                                    'thresholds.')
-                                self.add_to_main_log(
-                                    'CTRL: Tile above mean/SD slice-by-slice '
-                                    'thresholds.')
+                                # Try to do a preventive sweep and check if image passes the tests afterwards
+                                self.remove_debris()
+                                (tile_img, mean, stddev,
+                                 range_test_passed, slice_by_slice_test_passed, tile_selected,
+                                 load_error, load_exception,
+                                 grab_incomplete, frozen_frame_error) = (
+                                    self.img_inspector.process_tile(save_path,
+                                                                    grid_index, tile_index,
+                                                                    self.slice_counter, self.img_masks[mask_key]))
+                                # Image did not pass the test even after sweeping
+                                if not slice_by_slice_test_passed:
+                                    tile_accepted = False
+                                    self.error_state = Error.tile_image_compare
+                                    utils.log_error(
+                                        'CTRL',
+                                        'Tile above mean/SD slice-by-slice '
+                                        'thresholds.')
+                                    self.add_to_main_log(
+                                        'CTRL: Tile above mean/SD slice-by-slice '
+                                        'thresholds.')
                 else:
                     # Tile image file could not be loaded
                     utils.log_error(
