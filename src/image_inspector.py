@@ -255,6 +255,17 @@ class ImageInspector:
                 slice_by_slice_test_passed = (
                     (diff_mean <= self.tile_mean_threshold)
                     and (diff_stddev <= self.tile_stddev_threshold))
+
+                # If current img did not pass the test, try to register it with its predecessor
+                # and check thresholds again
+                if not slice_by_slice_test_passed:
+                    prev_filename = utils.get_previous_img_filename(filename)
+                    img_ref, img_tst = utils.register_pair(prev_filename, filename)
+                    diff_mean = abs(np.mean(img_ref) - np.mean(img_tst))
+                    diff_stddev = abs(np.std(img_ref) - np.std(img_tst))
+                    slice_by_slice_test_passed = (
+                            (diff_mean <= self.tile_mean_threshold)
+                            and (diff_stddev <= self.tile_stddev_threshold))
             else:
                 slice_by_slice_test_passed = None
 

@@ -20,11 +20,15 @@ import math
 import cv2
 import numpy as np
 import glob
+from typing import Tuple
 
 from cv2 import Sobel
 from skimage.draw import disk
 from skimage import img_as_ubyte
 from skimage.io import imread, imsave
+from skimage.registration import phase_cross_correlation
+from scipy.ndimage.interpolation import shift
+from skimage.util import crop
 from os.path import basename
 from enum import Enum
 from time import sleep
@@ -924,3 +928,45 @@ def load_masks(path):
         key = str.split(basename(fn), '.')[0]
         masks[key] = imread(fn)
     return masks
+
+
+def shift_collection(ic: np.ndarray, cumm_shifts: np.ndarray) -> np.ndarray:
+    for i in range(np.shape(ic)[0]):
+        if i == 0:
+            pass
+        else:
+            sample_img = ic[i]
+            vec = cumm_shifts[i-1]
+            shifted_img = shift(sample_img, vec)
+            ic[i] = shifted_img
+    return ic
+
+def get_previous_img_filename(current_img_fn: str) -> str:
+    s = current_img_fn
+    slice_counter = s[s.rfind('_s') + 2: s.rfind('.')]
+    prev_slice_counter = str(int(slice_counter) - 1).zfill(5)
+    prev_filename = s.replace(slice_counter, prev_slice_counter)
+    return prev_filename
+
+
+def register_pair(ref_img_fn: str, test_img_fn: str) -> Tuple[np.ndarray, np.ndarray]:
+    try:
+        ref_img = imread(ref_img_fn)  # get previous slice filename
+    except Exception as e:
+        load_exception = str(e)
+        load_error = True
+    if not load_error:
+        try:
+            test_img = imread(test_img_fn)  # current image
+        except Exception as f:
+            load_exception = str(f)
+            load_error = True
+    if not load_error:
+        shift_vec, _, __ = phase_cross_correlation(ref_img, test_img, upsample_factor=1)
+        shifted_img = shift(test_img, shift_vec)
+        crop_vals = ([0, 0], shift_vec[1], shift_vec[0])
+        ref_img = crop(ref_img, crop_vals)
+        shifted_img = crop(shifted_img, crop_vals)
+    return ref_img, shifted_img
+
+
