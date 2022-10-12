@@ -471,7 +471,7 @@ class Autofocus():
         self.afss_wd_stig_corr_optima = {}
         self.afss_average_corr = None
 
-    def reset_afss_series(self):  # TODO: more explanatory name
+    def afss_set_orig_wd_stig(self):
         # TODO check what if there are multiple grids with ref tiles (possibly also if inactivated grids)
         self.afss_current_round = 0
         for tile_key in self.afss_wd_stig_orig:

@@ -1034,9 +1034,9 @@ class Acquisition:
                 utils.log_info('AFSS:', 'Resetting original WD/Stig values to reference tiles.')
                 self.add_to_main_log('AFSS: Resetting original WD/Stig values to reference tiles.')
                 # for grid_index in range(self.gm.number_grids):
-                #     self.autofocus.reset_afss_series(grid_index)
-                # self.autofocus.reset_afss_series(grid_index)
-                self.autofocus.reset_afss_series()
+                #     self.autofocus.afss_set_orig_wd_stig(grid_index)
+                # self.autofocus.afss_set_orig_wd_stig(grid_index)
+                self.autofocus.afss_set_orig_wd_stig()
                 self.autofocus.reset_afss_corrections()
             # for AFSS delay purposes
             self.autofocus.afss_next_activation = self.slice_counter + self.autofocus.afss_offset
@@ -1306,7 +1306,7 @@ class Acquisition:
                     elif not thresholding_ok:
                         if self.autofocus.afss_consensus_mode == 0 or \
                                 (self.autofocus.afss_consensus_mode == 2 and self.autofocus.afss_mode != 'focus'):
-                            msg = f"WD/STIG average out of the permitted range!"
+                            msg = f"WD/STIG average is out of the permitted range!"
                         else:
                             msg = f'WD/STIG differences of following tiles out of permitted range: '
                         utils.log_info('AFSS', msg)
@@ -1318,7 +1318,7 @@ class Acquisition:
                         msg = f'Resetting original {self.autofocus.afss_mode} values.'
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS: ' + msg)
-                    self.autofocus.reset_afss_series()
+                    self.autofocus.afss_set_orig_wd_stig()
                 self.autofocus.reset_afss_corrections()
                 self.autofocus.next_afss_mode()
                 self.autofocus.afss_next_activation += self.autofocus.interval

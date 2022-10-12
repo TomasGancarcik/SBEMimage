@@ -902,10 +902,12 @@ def barycenter(points):
 
 # -------------- Sharpness computation utils --------------
 
+
 def sobel(data, kernel=3): #kernel = -1 ==Scharr
     sobelx = Sobel(data,cv2.CV_64F,1,0,kernel)
     sobely = Sobel(data,cv2.CV_64F,0,1,kernel)
     return cv2.magnitude(sobelx, sobely)
+
 
 def create_mask(tile_size):
     width, height = tile_size
@@ -916,11 +918,13 @@ def create_mask(tile_size):
     mask[rr, cc] = False
     return mask
 
+
 def save_mask(mask, filename):
     try:
         imsave(filename, img_as_ubyte(mask))
     except:
         print('Unable to save mask for image quality inspection.')
+
 
 def load_masks(path):
     masks = {}
@@ -930,51 +934,9 @@ def load_masks(path):
     return masks
 
 
-def pad(a):
-    '''
-    cropping the array requires the knowledge of how many items should be cropped (form both ends)
-    input: nr of items to be removed from one end of an array
-    output: 2-tuple, that contains how much the array should be cropped from both end with correct orientation
-    '''
-    p = [0, int(np.ceil(abs(a)))]
-    return p if a<=0 else p[::-1]
-
-
 def shift_image(arr, shift_vec):
     offset_img = fourier_shift(np.fft.fftn(arr), shift_vec)
     return np.fft.ifftn(offset_img).real
-
-
-### based on skimage.measure.blur_effect
-### https://scikit-image.org/docs/0.19.x/api/skimage.measure.html?highlight=blur%20effect#skimage.measure.blur_effect
-# def blur_effect(image, h_size=11, channel_axis=None, reduce_func=np.max):
-#     if channel_axis is not None:
-#         try:
-#             # ensure color channels are in the final dimension
-#             image = np.moveaxis(image, channel_axis, -1)
-#         except np.AxisError:
-#             print('channel_axis must be one of the image array dimensions')
-#             raise
-#         except TypeError:
-#             print('channel_axis must be an integer')
-#             raise
-#         #image = rgb2gray(image)
-#     n_axes = image.ndim
-#     image = img_as_float(image)
-#     shape = image.shape
-#     B = []
-#
-#     slices = tuple([slice(2, s - 1) for s in shape])
-#     for ax in range(n_axes):
-#         filt_im = uniform_filter1d(image, h_size, axis=ax)
-#         im_sharp = np.abs(filters.sobel(image, axis=ax))
-#         im_blur = np.abs(filters.sobel(filt_im, axis=ax))
-#         T = np.maximum(0, im_sharp - im_blur)
-#         M1 = np.sum(im_sharp[slices])
-#         M2 = np.sum(T[slices])
-#         B.append(np.abs((M1 - M2)) / M1)
-#
-#     return B if reduce_func is None else reduce_func(B)
 
 
 def load_image_collection(files: list) -> np.ndarray:
@@ -1048,6 +1010,7 @@ def get_collection_sharpness(ic: np.ndarray, metric: str) -> list:
     # print('collection: sharpness computed')
     return sh_arr
 
+
 # Based on: https://stackoverflow.com/questions/11686720/is-there-a-numpy-builtin-to-reject-outliers-from-a-list
 def filter_outliers(data: np.ndarray, m = 2.) -> np.ndarray:
     d = np.abs(data - np.median(data))
@@ -1075,5 +1038,6 @@ def compute_focus_index(img: np.ndarray) -> float:
     gf2 = gaussian_filter(img, sigma=4, mode='reflect')
     fi = np.sum(np.sqrt((gf1 - gf2)**2)/len(img))
     return fi
+
 
 # -------------- EOF Sharpness computation utils --------------
