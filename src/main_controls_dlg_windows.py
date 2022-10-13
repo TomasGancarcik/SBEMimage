@@ -3174,8 +3174,7 @@ class AutofocusSettingsDlg(QDialog):
         self.comboBox_afss_consensus_mode.setCurrentIndex(self.autofocus.afss_consensus_mode)
         self.checkBox_afss_drift_corrected.setChecked(self.autofocus.afss_drift_corrected)
         self.checkBox_afss_autostig_active.setChecked(self.autofocus.afss_autostig_active)
-        # self.checkBox_afss_autostig_active.stateChanged.connect(
-        #     self.update_afss_mode)
+        self.spinBox_afss_fails.setValue(self.autofocus.afss_max_fails)
 
         # Disable some settings if MagC mode is active
         if magc_mode:
@@ -3244,9 +3243,6 @@ class AutofocusSettingsDlg(QDialog):
         else:
             self.lineEdit_refTiles.setEnabled(True)
 
-    # def update_afss_mode(self):
-    #     if not self.checkBox_afss_autostig_active.isChecked():
-    #         self.autofocus.afss_mode = 'focus'
 
     def accept(self):
         error_str = ''
@@ -3291,6 +3287,7 @@ class AutofocusSettingsDlg(QDialog):
         self.autofocus.afss_consensus_mode = self.comboBox_afss_consensus_mode.currentIndex()
         self.autofocus.afss_drift_corrected = self.checkBox_afss_drift_corrected.isChecked()
         self.autofocus.afss_autostig_active = self.checkBox_afss_autostig_active.isChecked()
+        self.autofocus.afss_max_fails = self.spinBox_afss_fails.value()
         # Heuristic + Mapfost
         self.autofocus.heuristic_calibration = [
             self.doubleSpinBox_focusCalib.value(),

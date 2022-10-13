@@ -117,6 +117,7 @@ class Autofocus():
         self.afss_hyper_shuffle = False
         self.afss_filter_outliers = False
         self.afss_average_corr = None
+        self.afss_max_fails = json.loads(self.cfg['autofocus']['afss_max_fails'])
 
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
@@ -144,6 +145,7 @@ class Autofocus():
         self.cfg['autofocus']['afss_drift_corrected'] = str(self.afss_drift_corrected)
         self.cfg['autofocus']['afss_autostig_active'] = str(self.afss_autostig_active)
         self.cfg['autofocus']['afss_mode'] = str(self.afss_mode)
+        self.cfg['autofocus']['afss_max_fails'] = str(self.afss_max_fails)
 
     # ================ Below: methods for Automated focus/stig series method ==================
 

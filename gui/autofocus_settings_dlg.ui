@@ -528,7 +528,7 @@
      <x>300</x>
      <y>305</y>
      <width>291</width>
-     <height>280</height>
+     <height>290</height>
     </rect>
    </property>
    <property name="title">
@@ -777,11 +777,40 @@
      <string>Consensus mode:</string>
     </property>
    </widget>
+   <widget class="QSpinBox" name="spinBox_afss_fails">
+    <property name="geometry">
+     <rect>
+      <x>240</x>
+      <y>240</y>
+      <width>41</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="minimum">
+     <number>-1</number>
+    </property>
+    <property name="maximum">
+     <number>100</number>
+    </property>
+   </widget>
+   <widget class="QLabel" name="label_afss_fails">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>240</y>
+      <width>206</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Max. number of failed runs (-1 to disable):</string>
+    </property>
+   </widget>
 	<widget class="QCheckBox" name="checkBox_afss_drift_corrected">
 	 <property name="geometry">
 	  <rect>
 	   <x>10</x>
-	   <y>250</y>
+	   <y>265</y>
 	   <width>101</width>
 	   <height>17</height>
 	  </rect>
@@ -794,7 +823,7 @@
 	 <property name="geometry">
 	  <rect>
 	   <x>120</x>
-	   <y>250</y>
+	   <y>265</y>
 	   <width>151</width>
 	   <height>17</height>
 	  </rect>

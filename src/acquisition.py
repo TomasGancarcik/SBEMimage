@@ -651,7 +651,7 @@ class Acquisition:
             self.do_afss_corrections = False
             # Reset AFSS corrections
             self.autofocus.reset_afss_corrections()
-            self.afss_fail_counter = {'focus': 0, 'stig_x': 0, 'stig_y': 0}
+            self.afss_fail_counter = {'focus': -1, 'stig_x': -1, 'stig_y': -1}
 
             # Discard previous tile statistics in image inspector that are
             # used for tile-by-tile comparisons and quality checks.
@@ -1285,8 +1285,8 @@ class Acquisition:
                         msg = log_msgs[tile_key]
                         self.add_to_main_log(msg)
                         utils.log_info(msg.split(':')[0], msg.split(':')[1][1:])
-                    #   Reset respective fail counter if AFSS run was successful
-                    self.afss_fail_counter[self.autofocus.afss_mode] = 0
+                    #   Reset fail counter of current afss mode if AFSS run was successful
+                    self.afss_fail_counter[self.autofocus.afss_mode] = -1
                     self.autofocus.reset_afss_corrections()
                     self.autofocus.next_afss_mode()
                     self.autofocus.afss_next_activation += self.autofocus.interval
@@ -1321,15 +1321,11 @@ class Acquisition:
 
                     # Safety feature in case of AFSS failed too many times
                     self.afss_fail_counter[self.autofocus.afss_mode] += 1
-                    afss_safe_mode = True
-                    max_fails = 5
-                    if any(v == max_fails for v in self.afss_fail_counter.values()) and afss_safe_mode:
+                    afss_safe_mode = self.autofocus.afss_max_fails != -1   # Safety feature disabled if user selected -1
+                    if any(v == self.autofocus.afss_max_fails for v in self.afss_fail_counter.values()) \
+                            and afss_safe_mode:
                         self.error_state = Error.autofocus_afss
                         self.pause_acquisition(1)
-                        msg = f'AFSS failed to apply {self.autofocus.afss_mode} corrections too many times. ' \
-                              f'Pausing acquisition.'
-                        utils.log_error('CTRL', msg)
-                        self.add_to_main_log('CTRL: ' + msg)
 
                 self.autofocus.reset_afss_corrections()
                 self.autofocus.next_afss_mode()
@@ -1368,7 +1364,9 @@ class Acquisition:
                 # microtome's error state.
                 self.error_state = self.microtome.error_state
                 self.microtome.reset_error_state()
-        if self.error_state != Error.none and self.error_state != Error.wd_stig_difference:
+        if self.error_state != Error.none \
+                and self.error_state != Error.wd_stig_difference\
+                and self.error_state != Error.autofocus_afss:
             utils.log_error('CTRL', 'Error during cut cycle.')
             utils.log_info(
                 'STAGE',
