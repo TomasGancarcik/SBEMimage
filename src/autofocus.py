@@ -333,6 +333,7 @@ class Autofocus():
 
     def get_average_afss_correction(self, do_filtering: bool) -> Tuple[float, int]:
         #  Function for mode='Average' in f(apply_afss_corrections)
+        do_weighted_average = True
         diffs = []
         nr_of_filtered = 0
         m = self.afss_mode
@@ -344,8 +345,19 @@ class Autofocus():
             diffs_filtered = utils.filter_outliers(np.asarray(diffs))
             nr_of_filtered = len(diffs) - len(diffs_filtered)
             diffs = diffs_filtered
-        self.afss_average_corr = np.mean(diffs)
-        return np.mean(diffs), nr_of_filtered
+        avg = np.mean(diffs)
+        if do_weighted_average:
+            print(f'Applying weighted average')
+            print(f'Diffs orig: {diffs}')
+            # mask = [True] * len(diffs)    # TODO: incase masking of some values will be needed use this mask
+            ma_diffs = np.ma.array(diffs, mask=False)   # mask=False means no values are removed
+            rmse_ = [rmse for diff, rmse in self.afss_wd_stig_corr_optima.values()]
+            print(f'RMSE_ = {rmse_}')
+            print(f'Weighted RMSE: = {utils.get_weights(rmse_, rmse_limit=1.0e-1)}')
+            avg = np.ma.average(ma_diffs, weights=utils.get_weights(rmse_, rmse_limit=1.0e-1))  # TODO: limit into cfg
+        self.afss_average_corr = avg
+        print(f'average = {avg}')
+        return avg, nr_of_filtered
 
     def apply_afss_corrections(self) -> Tuple[float, dict, int]:
         """Apply individual tile corrections."""

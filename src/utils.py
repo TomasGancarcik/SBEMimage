@@ -1019,4 +1019,18 @@ def compute_focus_index(img: np.ndarray) -> float:
     return fi
 
 
+def get_weights(input_array: list, rmse_limit: float) -> list:
+    # linear weighing is applied to the input_array (list of diffs from afss_series optima)
+    # values are recalibrated to the range [rmse_limit, 1] where 1 is give to the
+    # LOWEST value from input array
+    def norm_data(arr: list) -> np.ndarray:
+        arr = np.asarray(arr)
+        arr *= -1   # inversion as highest weight will be given to the lowest RMSE error
+        arr -= min(arr)
+        arr = arr/max(arr)
+        return arr
+    weights = norm_data(input_array)
+    fcts = rmse_limit*(1 - weights)
+    return list(weights + fcts)
+
 # -------------- EOF Sharpness computation utils --------------
