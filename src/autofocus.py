@@ -347,16 +347,16 @@ class Autofocus():
             diffs = diffs_filtered
         avg = np.mean(diffs)
         if do_weighted_average:
-            print(f'Applying weighted average')
-            print(f'Diffs orig: {diffs}')
+            # print(f'Applying weighted average')
+            # print(f'Diffs orig: {diffs}')
             # mask = [True] * len(diffs)    # TODO: incase masking of some values will be needed use this mask
             ma_diffs = np.ma.array(diffs, mask=False)   # mask=False means no values are removed
             rmse_ = [rmse for diff, rmse in self.afss_wd_stig_corr_optima.values()]
-            print(f'RMSE_ = {rmse_}')
-            print(f'Weighted RMSE: = {utils.get_weights(rmse_, rmse_limit=1.0e-1)}')
+            # print(f'RMSE_ = {rmse_}')
+            # print(f'Weighted RMSE: = {utils.get_weights(rmse_, rmse_limit=1.0e-1)}')
             avg = np.ma.average(ma_diffs, weights=utils.get_weights(rmse_, rmse_limit=1.0e-1))  # TODO: limit into cfg
         self.afss_average_corr = avg
-        print(f'average = {avg}')
+        # print(f'average = {avg}')
         return avg, nr_of_filtered
 
     def apply_afss_corrections(self) -> Tuple[float, dict, int]:
