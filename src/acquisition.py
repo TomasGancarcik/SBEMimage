@@ -1005,6 +1005,12 @@ class Acquisition:
             utils.log_info('CTRL', 'Stack completed.')
             self.add_to_main_log('CTRL: Stack completed.')
             self.main_controls_trigger.transmit('COMPLETION STOP')
+            if self.autofocus.afss_active:
+                self.autofocus.afss_set_orig_wd_stig()
+                self.autofocus.reset_afss_corrections()
+                msg = 'Resetting original WD/Stig values to reference tiles.'
+                utils.log_info('AFSS:', msg);
+                self.add_to_main_log('AFSS: ' + msg)
             if self.use_email_monitoring:
                 # Send notification email
                 msg_subject = 'Stack ' + self.stack_name + ' COMPLETED.'
@@ -1029,13 +1035,13 @@ class Acquisition:
         if self.acq_paused:
             utils.log_info('CTRL', 'Stack paused.')
             self.add_to_main_log('CTRL: Stack paused.')
-            # reset AFSS series and set original WD/Stig to reference tiles if stack pause during AFSS run
-            if self.autofocus.afss_active and self.autofocus.afss_wd_stig_orig:  # the second condition is probably
-                # redundant
-                utils.log_info('AFSS:', 'Resetting original WD/Stig values to reference tiles.')
-                self.add_to_main_log('AFSS: Resetting original WD/Stig values to reference tiles.')
+            # Reset AFSS series and set original WD/Stig to reference tiles if the acquisition is paused during AFSS run
+            if self.autofocus.afss_active:
                 self.autofocus.afss_set_orig_wd_stig()
                 self.autofocus.reset_afss_corrections()
+                msg = 'Resetting original WD/Stig values to reference tiles.'
+                utils.log_info('AFSS:', msg);
+                self.add_to_main_log('AFSS: ' + msg)
             # for AFSS delay purposes
             self.autofocus.afss_next_activation = self.slice_counter + self.autofocus.afss_offset
 
@@ -1321,7 +1327,7 @@ class Acquisition:
 
                     # Safety feature in case of AFSS failed too many times
                     self.afss_fail_counter[self.autofocus.afss_mode] += 1
-                    afss_safe_mode = self.autofocus.afss_max_fails != -1   # Safety feature disabled if user selected -1
+                    afss_safe_mode = self.autofocus.afss_max_fails != -1  # Safety feature disabled if user selected -1
                     if any(v == self.autofocus.afss_max_fails for v in self.afss_fail_counter.values()) \
                             and afss_safe_mode:
                         self.error_state = Error.autofocus_afss
@@ -1365,7 +1371,7 @@ class Acquisition:
                 self.error_state = self.microtome.error_state
                 self.microtome.reset_error_state()
         if self.error_state != Error.none \
-                and self.error_state != Error.wd_stig_difference\
+                and self.error_state != Error.wd_stig_difference \
                 and self.error_state != Error.autofocus_afss:
             utils.log_error('CTRL', 'Error during cut cycle.')
             utils.log_info(
@@ -2758,7 +2764,8 @@ class Acquisition:
                                     'thresholds.')
                     # AFSS: Add sharpness value of current tile to the correction series:
                     #  correction series = {tile_id: {slice_nr: (tile_wd, tile_stig_xy, sharpness)}
-                    ref_tiles = self.gm[grid_index].autofocus_ref_tiles()  # TODO: consider passing it instead of creating
+                    ref_tiles = self.gm[
+                        grid_index].autofocus_ref_tiles()  # TODO: consider passing it instead of creating
                     if tile_accepted and tile_index in ref_tiles and self.autofocus.afss_active:
                         if tile_id not in self.autofocus.afss_wd_stig_corr:
                             self.autofocus.afss_wd_stig_corr[tile_id] = {}
