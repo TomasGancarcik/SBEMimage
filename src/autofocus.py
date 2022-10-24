@@ -355,9 +355,7 @@ class Autofocus():
         avg = np.mean(diffs)
         if do_weighted_average and len(diffs) > 1:
             rmse_ = [self.afss_wd_stig_corr_optima[key][1] for key in diffs_dict.keys()]
-            print(f'rmse: {rmse_}')
             weights = utils.get_weights(rmse_, smallest_weight=0.3)
-            print(f'weights: {weights}')
             if np.sum(weights) == 0:  # Prevent division by zero if by any change the sum of weight is zero
                 weights[0] -= 1e-9
             avg = np.average(diffs, weights=weights)  # TODO: limit into cfg
