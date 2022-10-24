@@ -1737,13 +1737,13 @@ class GridSettingsDlg(QDialog):
         current_frame_size_selector = self.sem.get_frame_size_selector()
         current_pixel_size = self.sem.get_pixel_size()
         current_scan_rate = self.sem.get_scan_rate()
-        #current_stig_x = self.sem.get_stig_x()
-        #current_stig_y = self.sem.get_stig_y()
+        current_stig_x = self.sem.get_stig_x()
+        current_stig_y = self.sem.get_stig_y()
         self.comboBox_tileSize.setCurrentIndex(current_frame_size_selector)
         self.comboBox_dwellTime.setCurrentIndex(current_scan_rate)
         self.doubleSpinBox_pixelSize.setValue(current_pixel_size)
-        #self.doubleSpinBox_globalStigX.setValue(current_stig_x)
-        #self.doubleSpinBox_globalStigY.setValue(current_stig_y)
+        self.doubleSpinBox_globalStigX.setValue(current_stig_x)
+        self.doubleSpinBox_globalStigY.setValue(current_stig_y)
 
     def show_current_settings(self):
         self.comboBox_colourSelector.setCurrentIndex(
