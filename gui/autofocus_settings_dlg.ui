@@ -526,9 +526,9 @@
    <property name="geometry">
     <rect>
      <x>300</x>
-     <y>305</y>
+     <y>280</y>
      <width>291</width>
-     <height>290</height>
+     <height>315</height>
     </rect>
    </property>
    <property name="title">
@@ -832,6 +832,44 @@
 	  <string>Enable Stigmator series</string>
 	 </property>
 	</widget>
+	<widget class="QLabel" name="label_afss_rmse_limit">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>285</y>
+      <width>191</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>Fit precision limit (RMSE):</string>
+    </property>
+   </widget>
+   <widget class="QDoubleSpinBox" name="doubleSpinBox_afss_rmse_limit">
+    <property name="geometry">
+     <rect>
+      <x>220</x>
+      <y>285</y>
+      <width>61</width>
+      <height>22</height>
+     </rect>
+    </property>
+    <property name="decimals">
+     <number>3</number>
+    </property>
+    <property name="minimum">
+     <double>0.00000000000000</double>
+    </property>
+    <property name="maximum">
+     <double>5.000000000000000</double>
+    </property>
+    <property name="singleStep">
+     <double>0.010000000000000</double>
+    </property>
+    <property name="value">
+     <double>0.10000000000000</double>
+    </property>
+   </widget>
   </widget>
   <widget class="QGroupBox" name="groupBox">
    <property name="geometry">
@@ -839,7 +877,7 @@
      <x>300</x>
      <y>10</y>
      <width>291</width>
-     <height>278</height>
+     <height>248</height>
     </rect>
    </property>
    <property name="title">

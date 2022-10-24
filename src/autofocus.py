@@ -118,7 +118,7 @@ class Autofocus():
         self.afss_weighted_averaging = True
         self.afss_avg_corr = None
         self.afss_max_fails = json.loads(self.cfg['autofocus']['afss_max_fails'])
-        self.afss_rmse_limit = 1.4e-1
+        self.afss_rmse_limit = float(self.cfg['autofocus']['afss_rmse_limit'])
 
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
@@ -147,6 +147,7 @@ class Autofocus():
         self.cfg['autofocus']['afss_autostig_active'] = str(self.afss_autostig_active)
         self.cfg['autofocus']['afss_mode'] = str(self.afss_mode)
         self.cfg['autofocus']['afss_max_fails'] = str(self.afss_max_fails)
+        self.cfg['autofocus']['afss_rmse_limit'] = str(self.afss_rmse_limit)
 
     # ================ Below: methods for Automated focus/stig series method ==================
 
@@ -165,7 +166,7 @@ class Autofocus():
             rmse_val = vals[1]
             if rmse_val > rmse_limit or rmse_val == -1:
                 del d[t]
-                msg = f'Tile {t} rejected. RMSE: {rmse_val}'
+                msg = f'Tile {t} rejected. RMSE: {round(rmse_val, 4)}'
                 rejected_fits[t] = (rmse_val, msg)
         nr_of_reliable_fits = len(d)
 
@@ -352,9 +353,11 @@ class Autofocus():
                 if v not in diffs:
                     del (diffs_dict[k])
         avg = np.mean(diffs)
-        if do_weighted_average:
+        if do_weighted_average and len(diffs) > 1:
             rmse_ = [self.afss_wd_stig_corr_optima[key][1] for key in diffs_dict.keys()]
+            print(f'rmse: {rmse_}')
             weights = utils.get_weights(rmse_, smallest_weight=0.3)
+            print(f'weights: {weights}')
             if np.sum(weights) == 0:  # Prevent division by zero if by any change the sum of weight is zero
                 weights[0] -= 1e-9
             avg = np.average(diffs, weights=weights)  # TODO: limit into cfg
