@@ -1773,16 +1773,10 @@ class GridSettingsDlg(QDialog):
         sy = self.doubleSpinBox_globalStigY.value()
         self.gm[self.current_grid].set_stig_xy_for_all_tiles([sx, sy])
         
-    # def set_global_stig_x(self):
-        # stig_x_val = 
-        
-    # def set_global_stig_y(self):
-        # stig_y_val = self.doubleSpinBox_currentStigY.setValue(self.sem.get_stig_y())
-        
         
     def shift_wds(self):
         delta_wd = self.doubleSpinBox_global_wd_shift.value()
-        self.gm[self.current_grid].shift_wd_for_all_tiles(delta_wd)
+        self.gm[self.current_grid].set_delta_wd_for_all_tiles(delta_wd/10**6)
    
 
     def show_frame_size_and_dose(self):

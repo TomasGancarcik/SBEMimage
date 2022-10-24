@@ -527,9 +527,9 @@
   <widget class="QPushButton" name="pushButton_global_wd_shift">
    <property name="geometry">
     <rect>
-     <x>149</x>
+     <x>139</x>
      <y>352</y>
-     <width>82</width>
+     <width>92</width>
      <height>22</height>
     </rect>
    </property>
@@ -540,9 +540,9 @@
   <widget class="QDoubleSpinBox" name="doubleSpinBox_global_wd_shift">
    <property name="geometry">
     <rect>
-     <x>149</x>
+     <x>139</x>
      <y>378</y>
-     <width>54</width>
+     <width>70</width>
      <height>22</height>
     </rect>
    </property>
@@ -550,10 +550,10 @@
     <number>3</number>
    </property>
    <property name="minimum">
-    <double>-5.000000000000000</double>
+    <double>-1000.00000000000</double>
    </property>
    <property name="maximum">
-    <double>5.000000000000000</double>
+    <double>1000.00000000000</double>
 	</property>
    <property name="singleStep">
     <double>0.050000000</double>
@@ -562,19 +562,19 @@
     <double>0.00000000000</double>
    </property>
    </widget>
-  <widget class="QLabel" name="label_WD_unit_microns">
-   <property name="geometry">
-    <rect>
-     <x>206</x>
-     <y>378</y>
-     <width>25</width>
-     <height>20</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>(um)</string>
-   </property>
-  </widget>
+      <widget class="QLabel" name="label_wd_shift_micron_unit">
+    <property name="geometry">
+     <rect>
+      <x>210</x>
+      <y>378</y>
+      <width>22</width>
+      <height>20</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string>(um)</string>
+    </property>
+   </widget>
   </widget>
   <widget class="QGroupBox" name="groupBox_2">
    <property name="geometry">
