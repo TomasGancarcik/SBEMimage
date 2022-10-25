@@ -199,7 +199,7 @@ class Autofocus():
                 filenames.append(img_path)
             newest_img_pair_fns = filenames[-2:]
             ic = utils.load_image_collection(newest_img_pair_fns)
-            _, shift_vec = utils.register_image_collection(ic)
+            shift_vec = utils.register_image_collection(ic)
             self.afss_wd_stig_corr[tile_key][slice_nr].append(shift_vec)
 
     def process_afss_collections(self):
