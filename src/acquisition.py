@@ -2418,7 +2418,6 @@ class Acquisition:
                     if slice_by_slice_test_passed:
                         utils.log_info('CTRL', msgs[1])
                         self.add_to_main_log('CTRL:' + msgs[1])
-                        
                 # Time the duration of process_tile()
                 end_time = time()
                 inspect_duration = end_time - start_time
@@ -2483,21 +2482,6 @@ class Acquisition:
                                 self.add_to_main_log(
                                     'CTRL: Tile outside of permitted mean/SD '
                                     'range!')
-                            # elif (slice_by_slice_test_passed is not None
-                            #       and not slice_by_slice_test_passed):
-                            #     # Try to do a preventive sweep and check if image passes the tests afterwards
-                            #     msg = 'Performing preventive sweep as tile is suspected to be covered with debris.'
-                            #     utils.log_info('CTRL:',  msg)
-                            #     self.add_to_main_log('CTRL' + msg)
-                            #     self.remove_debris()
-                            #     (tile_img, mean, stddev,
-                            #      range_test_passed, slice_by_slice_test_passed, tile_selected,
-                            #      load_error, load_exception,
-                            #      grab_incomplete, frozen_frame_error) = (
-                            #         self.img_inspector.process_tile(save_path,
-                            #                                         grid_index, tile_index,
-                            #                                         self.slice_counter, self.img_masks[mask_key]))
-                            #     # Image did not pass the test even after sweeping
                             elif (slice_by_slice_test_passed is not None
                                   and not slice_by_slice_test_passed):
                                 tile_accepted = False
