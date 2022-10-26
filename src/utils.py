@@ -25,7 +25,7 @@ from typing import Tuple
 from cv2 import Sobel
 from skimage.draw import disk
 from skimage import img_as_ubyte
-from skimage.io import imread, imsave
+from skimage.io import imread, imsave, ImageCollection
 from skimage.registration import phase_cross_correlation
 from scipy.ndimage.interpolation import shift
 from skimage.util import crop
@@ -930,16 +930,44 @@ def load_masks(path):
     return masks
 
 
+def load_image_collection(files: list) -> np.ndarray:
+    # print('loading image collection...')
+    coll = ImageCollection(files, conserve_memory=True).concatenate()
+    # print(f'collection shape: {np.shape(coll)}')
+    return coll
+
+
 def shift_collection(ic: np.ndarray, cumm_shifts: np.ndarray) -> np.ndarray:
-    for i in range(np.shape(ic)[0]):
-        if i == 0:
-            pass
-        else:
-            sample_img = ic[i]
-            vec = cumm_shifts[i-1]
-            shifted_img = shift(sample_img, vec)
-            ic[i] = shifted_img
+    for i,im in enumerate(ic[1:]):
+        ic[i+1] = shift(im, cumm_shifts[i])
     return ic
+
+
+def register_image_collection(ic: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    shifts, cumm_shifts = [], []
+    for i, img in enumerate(ic[:-1]):
+        # print(f'Registering: {os.path.basename(files[i])}')
+        # print(f'Registering img.nr: {i+1}')
+        im1 = ic[i]
+        im2 = ic[i + 1]
+        # Do not use (upsample_factor >= 1) as it spoils the image information!
+        shift_vec, _, __ = phase_cross_correlation(im1, im2, upsample_factor=1)
+        shifts.append(shift_vec)
+    cumm_shifts = np.cumsum(shifts, axis=0)
+    ic_reg = shift_collection(ic, cumm_shifts)
+    return ic_reg, cumm_shifts
+
+
+def crop_image_collection(image_collection: np.ndarray, cumm_shifts: np.ndarray) -> np.ndarray:
+    # print('collection: cropping ...')
+    sX, sY = np.asarray(cumm_shifts)[:, 1], np.asarray(cumm_shifts)[:, 0]
+    sx = np.array(np.round([abs(np.max(sX)), abs(np.min(sX))]), dtype=int)
+    sy = np.array(np.round([abs(np.max(sY)), abs(np.min(sY))]), dtype=int)
+    crop_vals = ([0, 0], sy, sx)
+    cropped_ic = crop(image_collection, crop_vals)
+    # print('collection: cropped')
+    return cropped_ic
+
 
 def get_previous_img_filename(current_img_fn: str) -> str:
     s = current_img_fn
@@ -949,24 +977,13 @@ def get_previous_img_filename(current_img_fn: str) -> str:
     return prev_filename
 
 
-def register_pair(ref_img_fn: str, test_img_fn: str) -> Tuple[np.ndarray, np.ndarray]:
-    try:
-        ref_img = imread(ref_img_fn)  # get previous slice filename
-    except Exception as e:
-        load_exception = str(e)
-        load_error = True
-    if not load_error:
-        try:
-            test_img = imread(test_img_fn)  # current image
-        except Exception as f:
-            load_exception = str(f)
-            load_error = True
-    if not load_error:
-        shift_vec, _, __ = phase_cross_correlation(ref_img, test_img, upsample_factor=1)
-        shifted_img = shift(test_img, shift_vec)
-        crop_vals = ([0, 0], shift_vec[1], shift_vec[0])
-        ref_img = crop(ref_img, crop_vals)
-        shifted_img = crop(shifted_img, crop_vals)
+def register_pair(ref_img: np.ndarray, moving_img: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    sy, sx = phase_cross_correlation(ref_img, moving_img, upsample_factor=1, return_error=False)
+    sy, sx = int(sy), int(sx)
+    shifted_img = shift(moving_img, list((sy, sx)))
+    crop_vals = ((abs(sy), abs(sy)), (abs(sx), abs(sx)))
+    ref_img = crop(ref_img, crop_vals)
+    shifted_img = crop(shifted_img, crop_vals)
     return ref_img, shifted_img
 
 
