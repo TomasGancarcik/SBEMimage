@@ -2408,16 +2408,20 @@ class Acquisition:
                                                     grid_index, tile_index,
                                                     self.slice_counter, self.img_masks[mask_key]))
 
-                # Register current tile to it predecessor and check slice-by-slice comparison again
-                if not slice_by_slice_test_passed:
-                    msgs = ['Tile did not pass initial image monitor testing. Trying again.',
-                            'Aligned Tile-image passed image monitor test. Continuing acquisition.']
-                    utils.log_info('CTRL', msgs[0])
-                    self.add_to_main_log('CTRL:' + msgs[0])
-                    slice_by_slice_test_passed = self.img_inspector.img_monitor_registered_tile(save_path)
-                    if slice_by_slice_test_passed:
-                        utils.log_info('CTRL', msgs[1])
-                        self.add_to_main_log('CTRL:' + msgs[1])
+                # If tile image did not pass the slice-by-slice thresholds, try to register it and check again.
+                # If there is xy shift that produced the error, registering should prevent this false positive event.
+                # Perform the action only if no error during image grab occurred.
+                if not any([load_error, frozen_frame_error, grab_incomplete]):
+                    if not slice_by_slice_test_passed and slice_by_slice_test_passed is not None:
+                        msgs = ['Tile did not pass initial image monitor testing. Trying again.',
+                                'Aligned Tile-image passed image monitor test. Continuing acquisition.']
+                        utils.log_info('CTRL', msgs[0])
+                        self.add_to_main_log('CTRL:' + msgs[0])
+                        slice_by_slice_test_passed = self.img_inspector.img_monitor_registered_tile(save_path)
+                        if slice_by_slice_test_passed:
+                            utils.log_info('CTRL', msgs[1])
+                            self.add_to_main_log('CTRL:' + msgs[1])
+
                 # Time the duration of process_tile()
                 end_time = time()
                 inspect_duration = end_time - start_time

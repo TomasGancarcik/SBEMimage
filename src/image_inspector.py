@@ -273,8 +273,8 @@ class ImageInspector:
                 load_error, load_exception, grab_incomplete, frozen_frame_error)
 
     def img_monitor_registered_tile(self, filename: str) -> bool:
-        """ If tile image did not pass the slice-by-slice thresholds, try to register it and check again.
-        If there is xy shift that produced the error, registering should prevent this false positive event. """
+        """ Perform slice-by-slice comparison on registered image pair """
+        slice_by_slice_test_passed = False
         prev_filename = utils.get_previous_img_filename(filename)
         if os.path.isfile(prev_filename):
             try:
