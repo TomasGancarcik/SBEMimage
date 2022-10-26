@@ -1158,14 +1158,17 @@ class Acquisition:
             # Update incident log in Viewport with warning message
             self.add_to_incident_log(
                 f'WARNING (Z move, error {self.error_state})')
-            self.error_state = Error.none
-            self.microtome.reset_error_state()
-            # Try again after three-second delay
-            sleep(3)
-            self.microtome.move_stage_to_z(self.stage_z_position)
-            self.main_controls_trigger.transmit('UPDATE Z')
-            # Read new error_state
-            self.error_state = self.microtome.error_state
+            for i in range(1,3):
+                self.error_state = Error.none
+                self.microtome.reset_error_state()
+                # Try again after three-second delay
+                sleep(i*3)
+                self.microtome.move_stage_to_z(self.stage_z_position)
+                self.main_controls_trigger.transmit('UPDATE Z')
+                # Read new error_state
+                self.error_state = self.microtome.error_state
+                if self.error_state not in [Error.dm_comm_response, Error.stage_z]:
+                    break
 
         start_cut = time()
         if self.error_state == Error.none:
