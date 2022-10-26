@@ -2267,7 +2267,7 @@ class Acquisition:
                     self.add_to_incident_log(f'WARNING (XY move to {tile_id}, '
                                              f'error {self.stage.error_state})')
                     self.stage.reset_error_state()
-                    sleep(2)
+                    sleep(10)
                     # Try to move to tile position again
                     utils.log_info(
                         'STAGE',
