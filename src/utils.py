@@ -991,7 +991,7 @@ def get_collection_sharpness(ic: np.ndarray, metric: str) -> list:
 
 
 # Based on: https://stackoverflow.com/questions/11686720/is-there-a-numpy-builtin-to-reject-outliers-from-a-list
-def filter_outliers(data: np.ndarray, m = 2.) -> np.ndarray:
+def filter_outliers(data: np.ndarray, m=2.) -> np.ndarray:
     d = np.abs(data - np.median(data))
     mdev = np.median(d)
     s = d/mdev if mdev else 0.
@@ -1019,18 +1019,17 @@ def compute_focus_index(img: np.ndarray) -> float:
     return fi
 
 
-def get_weights(input_array: list, rmse_limit: float) -> list:
-    # linear weighing is applied to the input_array (list of diffs from afss_series optima)
-    # values are recalibrated to the range [rmse_limit, 1] where 1 is give to the
+def get_weights(input_array: list, smallest_weight: float) -> list:
+    # Linear weighing is applied to the input_array (list of diffs from afss_series optima)
+    # Values are recalibrated to the range [smallest_weight:1] where 1 is given to the
     # LOWEST value from input array
     def norm_data(arr: list) -> np.ndarray:
         arr = np.asarray(arr)
-        arr *= -1   # inversion as highest weight will be given to the lowest RMSE error
+        arr *= -1   # inversion as highest weight (w=1.0) will be given to the lowest RMSE error
         arr -= min(arr)
-        arr = arr/max(arr)
-        return arr
+        return arr/max(arr)
     weights = norm_data(input_array)
-    fcts = rmse_limit*(1 - weights)
+    fcts = smallest_weight * (1 - weights)
     return list(weights + fcts)
 
 # -------------- EOF Sharpness computation utils --------------
