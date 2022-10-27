@@ -89,7 +89,7 @@ def acquire_ov(base_dir, selection, sem, stage, ovm, img_inspector,
             success = sem.acquire_frame(save_path)
             # Remove indicator colour
             viewport_trigger.transmit('ACQ IND OV' + str(ov_index))
-            _, _, _, load_error, _, grab_incomplete = (
+            _, _, _, _, load_error, _, grab_incomplete = (
                 img_inspector.load_and_inspect(save_path))
             if load_error or grab_incomplete and check_ov_acceptance:
                 # Try again
@@ -100,7 +100,7 @@ def acquire_ov(base_dir, selection, sem, stage, ovm, img_inspector,
                 success = sem.acquire_frame(save_path)
                 viewport_trigger.transmit('ACQ IND OV' + str(ov_index))
                 sleep(1)
-                _, _, _, load_error, _, grab_incomplete = (
+                _, _, _, _, load_error, _, grab_incomplete = (
                     img_inspector.load_and_inspect(save_path))
                 if load_error or grab_incomplete:
                     success = False
@@ -214,14 +214,14 @@ def acquire_stub_ov(sem, stage, ovm, acq, img_inspector,
                         first_tile = False
                     success = sem.acquire_frame(save_path)
                     sleep(0.5)
-                    tile_img, _, _, load_error, _, grab_incomplete = (
+                    tile_img, _, _, _, load_error, _, grab_incomplete = (
                         img_inspector.load_and_inspect(save_path))
                     if load_error or grab_incomplete:
                         # Try again
                         sem.reset_error_state()
                         success = sem.acquire_frame(save_path)
                         sleep(1.5)
-                        tile_img, _, _, load_error, _, grab_incomplete = (
+                        tile_img, _, _, _, load_error, _, grab_incomplete = (
                             img_inspector.load_and_inspect(save_path))
                         if load_error:
                             success = False

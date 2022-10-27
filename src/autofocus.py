@@ -113,9 +113,9 @@ class Autofocus():
         self.afss_interpolation_method = 'polyfit'  # fct to be used for interpolating the measured sharpness values
         self.afss_autostig_active = (self.cfg['autofocus']['afss_autostig_active'].lower() == 'true')
         self.afss_hyper_perturbation_series = {}
-        self.afss_shuffle = False
+        self.afss_shuffle = True
         self.afss_hyper_shuffle = False
-        self.afss_filter_outliers = False
+        self.afss_filter_outliers = True
         self.afss_average_corr = None
         self.afss_max_fails = json.loads(self.cfg['autofocus']['afss_max_fails'])
 
@@ -151,7 +151,7 @@ class Autofocus():
 
     def afss_verify_results(self) -> Tuple[int, dict, bool, dict]:
         m = self.afss_mode
-        rmse_limit = 1.0e-1
+        rmse_limit = 1.0e2
         rejected_fits = {}
         rejected_thr = {}
         thr_ok = True
@@ -171,7 +171,7 @@ class Autofocus():
         d = {'focus': (0, 0, self.max_wd_diff, 10 ** 6, 'WD', 'um'),
              'stig_x': (1, 0, self.max_stig_x_diff, 1, 'StigX', '%'),
              'stig_y': (1, 1, self.max_stig_y_diff, 1, 'StigY', '%')}
-        if nr_of_reliable_fits != 0:  # Continue only if there eis non-zero amount of corrections left from step 1.
+        if nr_of_reliable_fits != 0:  # Continue only if there is non-zero amount of corrections left from step 1.
             for tile_key, opt in self.afss_wd_stig_corr_optima.items():
                 if self.afss_average_corr is not None:  # Averaging mode is active
                     diff = abs(self.afss_average_corr)
@@ -185,7 +185,7 @@ class Autofocus():
                     diff = abs(opt[0] - self.afss_wd_stig_orig[tile_key][d[m][0]][d[m][1]])
                     if diff >= d[m][2]:
                         d1, d2 = round(diff * d[m][3], 3), round(d[m][2] * d[m][3], 3)
-                        msg = f'{d[m][4]} diff: {d1} {d[m][5]} (Limit: {d2} {d[m][5]})'
+                        msg = f'Tile {tile_key}: diff{d[m][4]}: {d1} {d[m][5]}, limit: {d2} {d[m][5]}'
                         rejected_thr[tile_key] = (d1, msg)
                 thr_ok &= diff <= d[m][2]
         return nr_of_reliable_fits, rejected_fits, thr_ok, rejected_thr
@@ -199,7 +199,7 @@ class Autofocus():
                 filenames.append(img_path)
             newest_img_pair_fns = filenames[-2:]
             ic = utils.load_image_collection(newest_img_pair_fns)
-            _, shift_vec = utils.register_image_collection(ic)
+            shift_vec = utils.register_image_collection(ic)
             self.afss_wd_stig_corr[tile_key][slice_nr].append(shift_vec)
 
     def process_afss_collections(self):
@@ -351,11 +351,13 @@ class Autofocus():
         """Apply individual tile corrections."""
         # mode = 'tile_specific'  # compute and apply corrections specific to each tile
         # mode = 'Average'  # compute average correction from results of all ref.tiles
-        diffs = {}
-        msgs = {}
+        diffs, msgs = {}, {}
+        mean_diff = 0.0
+        nr_of_outs: int = 0
         mode = self.afss_mode
         consensus_modes = ['Average', 'tile_specific', 'focus_specific_stig_average']
         avg_mode = consensus_modes[self.afss_consensus_mode]
+        print(f'avg_mode: {avg_mode}')
 
         if self.afss_consensus_mode == 0 or (self.afss_consensus_mode == 2 and self.afss_mode != 'focus'):
             mean_diff, nr_of_outs = self.get_average_afss_correction(
@@ -375,23 +377,21 @@ class Autofocus():
                         wd_opt = self.afss_wd_stig_corr_optima[tile_key][0]
                         diffs[tile_key] = wd_opt - wd_orig  # for logging purposes
                     msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((diffs[tile_key]) * 10 ** 6, 3)} um.'
-                elif avg_mode == 'tile_specific' or 'focus_specific_stig_average':
+                elif avg_mode == 'tile_specific' or avg_mode == 'focus_specific_stig_average':
                     if tile_key not in self.afss_wd_stig_corr_optima.keys():
                         wd_new = self.afss_wd_stig_orig[tile_key][0][0]
                         diffs[tile_key] = 0
-                        msgs[tile_key] = \
-                            f'AFSS: Tile {tile_key}, fit not reliable. Original WD will be applied.'
+                        msgs[tile_key] = f'AFSS: Tile {tile_key}, fit not reliable. Original WD will be applied.'
                     else:
                         wd_new = self.afss_wd_stig_corr_optima[tile_key][0]
                         diffs[tile_key] = wd_new - wd_orig
-                        msgs[tile_key] = \
-                            f'AFSS: Tile {tile_key}, delta WD = {round((diffs[tile_key]) * 10 ** 6, 3)} um.'
+                        msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((diffs[tile_key]) * 10 ** 6, 3)} um.'
                     self.gm[g][t].wd = wd_new
                 # Update original values by new results
                 self.afss_wd_stig_orig[tile_key][0][0] = self.gm[g][t].wd
             elif mode == 'stig_x':
                 stig_x_orig, stig_y_orig = self.afss_wd_stig_orig[tile_key][1]
-                if avg_mode == 'Average' or 'focus_specific_stig_average':
+                if avg_mode == 'Average' or avg_mode == 'focus_specific_stig_average':
                     stig_x_new = mean_diff + stig_x_orig
                     self.gm[g][t].stig_xy = [stig_x_new, stig_y_orig]
                     if tile_key not in self.afss_wd_stig_corr_optima:
@@ -404,8 +404,7 @@ class Autofocus():
                     if tile_key not in self.afss_wd_stig_corr_optima:
                         self.gm[g][t].stig_xy = [stig_x_orig, stig_y_orig]
                         diffs[tile_key] = 0
-                        msgs[tile_key] = \
-                            f'AFSS: Tile {tile_key}, fit not reliable. Original StigX will be applied.'
+                        msgs[tile_key] = f'AFSS: Tile {tile_key}, fit not reliable. Original StigX will be applied.'
                     else:
                         stig_x_new = self.afss_wd_stig_corr_optima[tile_key][0]
                         self.gm[g][t].stig_xy = [stig_x_new, stig_y_orig]
@@ -415,7 +414,7 @@ class Autofocus():
                 self.afss_wd_stig_orig[tile_key][1] = self.gm[g][t].stig_xy
             elif mode == 'stig_y':
                 stig_x_orig, stig_y_orig = self.afss_wd_stig_orig[tile_key][1]
-                if avg_mode == 'Average' or 'focus_specific_stig_average':
+                if avg_mode == 'Average' or avg_mode =='focus_specific_stig_average':
                     stig_y_new = mean_diff + stig_y_orig
                     self.gm[g][t].stig_xy = [stig_x_orig, stig_y_new]
                     if tile_key not in self.afss_wd_stig_corr_optima:
@@ -428,11 +427,10 @@ class Autofocus():
                     if tile_key not in self.afss_wd_stig_corr_optima:
                         self.gm[g][t].stig_xy = [stig_x_orig, stig_y_orig]
                         diffs[tile_key] = 0
-                        msgs[tile_key] = \
-                            f'AFSS: Tile {tile_key}, fit not reliable. Original StigY will be applied.'
+                        msgs[tile_key] = f'AFSS: Tile {tile_key}, fit not reliable. Original StigY will be applied.'
                     else:
                         stig_y_new = self.afss_wd_stig_corr_optima[tile_key][0]
-                        self.gm[g][t].stig_xy = [stig_x_orig, stig_y_new]
+                        self.gm[g][t].stig_xy[1] = stig_y_new
                         diffs[tile_key] = stig_y_new - stig_y_orig
                     msgs[tile_key] = f'AFSS: Tile {tile_key}, delta StigY = {round(diffs[tile_key], 3)} %.'
                 # Update original values by new results

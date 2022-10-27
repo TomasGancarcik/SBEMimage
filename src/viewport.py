@@ -800,7 +800,7 @@ class Viewport(QWidget):
             self.cfg['viewport']['show_axes'].lower() == 'true')
         # By default, stage position indicator is not visible. Can be activated
         # by user in GUI
-        self.show_stage_pos = False
+        self.show_stage_pos = True
 
         # Active user flag (highlighted text in the upper left corner of the
         # Viewport to show that a user is actively using the program.)

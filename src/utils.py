@@ -934,54 +934,33 @@ def load_masks(path):
     return masks
 
 
-def shift_image(arr, shift_vec):
-    offset_img = fourier_shift(np.fft.fftn(arr), shift_vec)
-    return np.fft.ifftn(offset_img).real
-
-
 def load_image_collection(files: list) -> np.ndarray:
-    # print('loading image collection...')
-    coll = ImageCollection(files, conserve_memory=True).concatenate()
-    # print(f'collection shape: {np.shape(coll)}')
-    return coll
+    return ImageCollection(files, conserve_memory=True).concatenate()
 
 
 def shift_collection(ic: np.ndarray, cumm_shifts: np.ndarray) -> np.ndarray:
-    for i in range(np.shape(ic)[0]):
-        if i == 0:
-            pass
-        else:
-            sample_img = ic[i]
-            vec = cumm_shifts[i-1]
-            shifted_img = shift(sample_img, vec)
-            ic[i] = shifted_img
+    for i,im in enumerate(ic[1:]):
+        ic[i+1] = shift(im, cumm_shifts[i])
     return ic
 
 
-def register_image_collection(ic: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-    shifts, cumm_shifts = [], []
+def register_image_collection(ic: np.ndarray) -> np.ndarray:
+    shifts = []
     for i, img in enumerate(ic[:-1]):
-        # print(f'Registering: {os.path.basename(files[i])}')
-        # print(f'Registering img.nr: {i+1}')
-        im1 = ic[i]
-        im2 = ic[i + 1]
-        # Do not use (upsample_factor >= 1) as it spoils the image information!
-        shift_vec, _, __ = phase_cross_correlation(im1, im2, upsample_factor=1)
-        shifts.append(shift_vec)
-    cumm_shifts = np.cumsum(shifts, axis=0)
-    ic_reg = shift_collection(ic, cumm_shifts)
-    return ic_reg, cumm_shifts
+        # Do not use (upsample_factor > 1) as it spoils the image information!
+        shifts.append(phase_cross_correlation(ic[i], ic[i+1], upsample_factor=1, return_error=False))
+    cumulative_shifts = np.cumsum(shifts, axis=0)
+    # ic_reg = shift_collection(ic, cumulative_shifts)
+    # return ic_reg, cumulative_shifts
+    return cumulative_shifts
 
 
 def crop_image_collection(image_collection: np.ndarray, cumm_shifts: np.ndarray) -> np.ndarray:
-    # print('collection: cropping ...')
     sX, sY = np.asarray(cumm_shifts)[:, 1], np.asarray(cumm_shifts)[:, 0]
     sx = np.array(np.round([abs(np.max(sX)), abs(np.min(sX))]), dtype=int)
     sy = np.array(np.round([abs(np.max(sY)), abs(np.min(sY))]), dtype=int)
     crop_vals = ([0, 0], sy, sx)
-    cropped_ic = crop(image_collection, crop_vals)
-    # print('collection: cropped')
-    return cropped_ic
+    return crop(image_collection, crop_vals)
 
 
 def get_collection_mask(coll_xy_shape: Tuple[int, int]) -> np.ndarray:
