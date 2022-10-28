@@ -334,6 +334,8 @@ class Autofocus():
         plt.xlabel([val for key, val in x_labels.items() if key == self.afss_mode][0])
         plt.ylabel('Sharpness [arb.u]')
         plt.savefig(path, dpi=100)
+        plt.cla()
+        plt.close(fig)
 
     def get_average_afss_correction(self, do_filtering: bool, do_weighted_average: bool) -> Tuple[float, int]:
         #  Function for mode='Average' in f(apply_afss_corrections)
