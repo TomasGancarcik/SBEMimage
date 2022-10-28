@@ -11,7 +11,7 @@ src/test.py
 *.ini
 *.cfg
 *.dat
-!default.ini
+default.ini
 !system.cfg
 !device_presets.cfg
 !installer.cfg

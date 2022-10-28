@@ -332,6 +332,8 @@ class Autofocus():
         plt.xlabel([val for key, val in x_labels.items() if key == self.afss_mode][0])
         plt.ylabel('Sharpness [arb.u]')
         plt.savefig(path, dpi=100)
+        plt.cla()
+        plt.close(fig)
 
     def get_average_afss_correction(self, do_filtering: bool, do_weighted_average: bool) -> Tuple[float, int]:
         #  Function for mode='Average' in f(apply_afss_corrections)
@@ -463,6 +465,14 @@ class Autofocus():
         if shuffle:
             random.shuffle(series)
         if not hyper_shuffle:
+            do_reflect = True
+            if do_reflect:
+                new = []
+                x = series
+                for i, v in enumerate(x):
+                    new.append(x[i])
+                    new.append(x[::-1][i])
+                series = np.asarray(new[:len(x)])
             for key in tile_keys:
                 self.afss_perturbation_series[key] = series
         else:
