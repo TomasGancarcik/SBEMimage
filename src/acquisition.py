@@ -1235,8 +1235,8 @@ class Acquisition:
                 # print('computing drifts')
 
             if self.do_afss_corrections:
-                utils.log_info('AFSS', 'Processing series.')
-                self.add_to_main_log('AFSS: Processing series.')
+                utils.log_info('AFSS', f'Processing {self.autofocus.afss_mode} series.')
+                self.add_to_main_log(f'AFSS: Processing {self.autofocus.afss_mode} series.')
                 # Recompute sharpness if AFSS drift correction is active otherwise use (masked) sharpness values
                 # computed during acquisition by image inspector
                 if self.autofocus.afss_drift_corrected:

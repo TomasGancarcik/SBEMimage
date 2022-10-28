@@ -465,7 +465,7 @@ class Autofocus():
         if shuffle:
             random.shuffle(series)
         if not hyper_shuffle:
-            do_reflect = True
+            do_reflect = False
             if do_reflect:
                 new = []
                 x = series
@@ -473,6 +473,14 @@ class Autofocus():
                     new.append(x[i])
                     new.append(x[::-1][i])
                 series = np.asarray(new[:len(x)])
+            do_duplicate = True
+            if do_duplicate:
+                x = np.linspace(-1, 1, int(np.ceil(self.afss_rounds / 2)))
+                new = []
+                for x in x:
+                    new.append(x)
+                    new.append(x)
+                series = np.asarray(new)
             for key in tile_keys:
                 self.afss_perturbation_series[key] = series
         else:
