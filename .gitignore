@@ -5,6 +5,7 @@ __pycache__/
 
 # Pytest
 .pytest_cache
+test.py
 
 # Configuration files, except templates, device presets and installer.cfg
 *.ini
