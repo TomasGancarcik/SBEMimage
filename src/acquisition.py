@@ -1250,9 +1250,8 @@ class Acquisition:
                     utils.log_info('AFSS', msg)
                     self.add_to_main_log('AFSS' + msg)
                     for rej_tile_key, val in rej_fits.items():
-                        msg = val[1]
-                        utils.log_info('AFSS', msg)
-                        self.add_to_main_log('AFSS' + msg)
+                        utils.log_info('AFSS', val[1])
+                        self.add_to_main_log('AFSS' + val[1])
                     msg = '_______'
                     utils.log_info('AFSS', msg)
                     self.add_to_main_log('AFSS' + msg)
@@ -1268,7 +1267,7 @@ class Acquisition:
                             self.autofocus.afss_consensus_mode == 2):  # mode 'Average' or combined
                         if self.autofocus.afss_mode == 'focus':
                             if self.autofocus.afss_consensus_mode == 0:
-                                msg = f'Applying average WD correction {round(mean_diff * 10 ** 6, 3)} um to all ' \
+                                msg = f'Applying average WD correction {mean_diff * 10**6:.3f} um to all ' \
                                       f'tracked tiles.'
                                 utils.log_info('AFSS', msg)
                                 self.add_to_main_log('AFSS' + msg)
@@ -1276,12 +1275,10 @@ class Acquisition:
                                 msg = f'Applying focus corrections to all tracked tiles'
                                 utils.log_info('AFSS', msg)
                                 self.add_to_main_log('AFSS  : ' + msg)
-                        elif self.autofocus.afss_mode == 'stig_x':
-                            msg = f'Applying average StigX correction {round(mean_diff, 3)} % to all tracked tiles.'
-                            utils.log_info('AFSS', msg)
-                            self.add_to_main_log('ASFF' + msg)
-                        elif self.autofocus.afss_mode == 'stig_y':
-                            msg = f'Applying average StigY correction {round(mean_diff, 3)} % to all tracked tiles.'
+                        else:
+                            dd = dict(stig_x='StigX', stig_y='StigY')
+                            msg = f'Applying average {dd[self.autofocus.afss_mode]} correction ' \
+                                  f'{mean_diff:.3f} % to all tracked tiles.'
                             utils.log_info('AFSS', msg)
                             self.add_to_main_log('ASFF' + msg)
                     elif self.autofocus.afss_consensus_mode == 1:  # Consensus mode 'Specific'
@@ -1311,9 +1308,8 @@ class Acquisition:
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS: ' + msg)
                         for tile_key, val in rej_thr.items():
-                            msg = val[1]
-                            utils.log_info('AFSS', msg)
-                            self.add_to_main_log('AFSS: ' + msg)
+                            utils.log_info('AFSS', val[1])
+                            self.add_to_main_log('AFSS: ' + val[1])
                         msg = f'Resetting original {self.autofocus.afss_mode} values.'
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS: ' + msg)
