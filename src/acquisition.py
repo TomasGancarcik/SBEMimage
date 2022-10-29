@@ -102,10 +102,10 @@ class Acquisition:
         # acq_interrupted_at: Position provided as [grid_index, tile_index]
         self.acq_interrupted_at = json.loads(self.cfg['acq']['interrupted_at'])
         # tiles_acquired: List of tiles that were already acquired in the grid
-        # in which the interruption occured.
+        # in which the interruption occurred.
         self.tiles_acquired = json.loads(self.cfg['acq']['tiles_acquired'])
         # grids_acquired: Grids (on the current slice) that had already been
-        # acquired before the interruption occured.
+        # acquired before the interruption occurred.
         self.grids_acquired = json.loads(self.cfg['acq']['grids_acquired'])
         # mirror_drive: network/local drive for mirroring image data
         self.mirror_drive = self.cfg['sys']['mirror_drive']
@@ -216,7 +216,7 @@ class Acquisition:
             date_estimate (str): Date and time of expected completion
         """
         if self.use_target_z_diff:
-            # calculate number of slices based on total Z difference, rounding down to nearest whole slice
+            # calculate number of slices based on total Z difference, rounding down to the nearest whole slice
             number_slices = math.floor((self.target_z_diff * 1000) / self.slice_thickness)
         else:
             number_slices = self.number_slices
@@ -440,7 +440,7 @@ class Acquisition:
         try:
             # Note that the config file and the gridmap file are only saved once
             # at the beginning of each run. The other log files are updated
-            # continously during the run.
+            # continuously during the run.
 
             # Save current configuration file with timestamp in log folder
             config_filename = os.path.join(
@@ -515,7 +515,7 @@ class Acquisition:
                     self.incident_log_filename,
                     self.metadata_filename])
                 # Create file handle for imagelist files on mirror drive.
-                # The imagelist files on the mirror drive are updated continously.
+                # The imagelist files on the mirror drive are updated continuously.
                 # The other logfiles are copied at the end of each run.
                 try:
                     self.mirror_imagelist_file = open(os.path.join(
@@ -622,7 +622,7 @@ class Acquisition:
             self.locked_stig_x, self.locked_stig_y = None, None
             self.locked_mag = None
 
-            # Global default settings for working distance and stimation,
+            # Global default settings for working distance and stigmation,
             # initialized with the current settings read from the SEM
             self.wd_default = self.sem.get_wd()
             self.stig_x_default, self.stig_y_default = (
@@ -772,7 +772,7 @@ class Acquisition:
                         self.wd_default,
                         [self.stig_x_default, self.stig_y_default])
                 else:
-                    # Set stig values to defaults for each tile if focus
+                    # Set stig values to default for each tile if focus
                     # gradient is used, but don't change working distance
                     # because wd is calculated with gradient parameters.
                     self.gm[grid_index].set_stig_xy_for_all_tiles(
@@ -887,7 +887,7 @@ class Acquisition:
 
             # Next, acquire all grids. If there was an interruption during the
             # previous run, the acquisition will resume at the interruption
-            # point. Autofocus will be used for the grid acquision if enabled.
+            # point. Autofocus will be used for the grid acquisition if enabled.
             self.acquire_all_grids()
 
             # Save a screenshot of the current content of the Viewport window
@@ -1009,7 +1009,7 @@ class Acquisition:
                 self.autofocus.afss_set_orig_wd_stig()
                 self.autofocus.reset_afss_corrections()
                 msg = 'Resetting original WD/Stig values to reference tiles.'
-                utils.log_info('AFSS:', msg);
+                utils.log_info('AFSS:', msg)
                 self.add_to_main_log('AFSS: ' + msg)
             if self.use_email_monitoring:
                 # Send notification email
@@ -1040,7 +1040,7 @@ class Acquisition:
                 self.autofocus.afss_set_orig_wd_stig()
                 self.autofocus.reset_afss_corrections()
                 msg = 'Resetting original WD/Stig values to reference tiles.'
-                utils.log_info('AFSS:', msg);
+                utils.log_info('AFSS:', msg)
                 self.add_to_main_log('AFSS: ' + msg)
             # for AFSS delay purposes
             self.autofocus.afss_next_activation = self.slice_counter + self.autofocus.afss_offset
@@ -1095,7 +1095,7 @@ class Acquisition:
     def process_remote_commands(self):
         """Check if user has sent an e-mail with a command to the e-mail
         account associated with this setup (see system configuration).
-        Currently implemented: User can pause the acquisition or request a
+        Currently, implemented: User can pause the acquisition or request a
         status report.
         """
         command = self.notifications.get_remote_command()
@@ -1323,20 +1323,19 @@ class Acquisition:
                     # self.afss_fail_counter[self.autofocus.afss_mode] += 1
                     self.autofocus.next_afss_mode()
                     # Safety feature in case of AFSS failed too many times
-                    afss_safe_mode = self.autofocus.afss_max_fails != -1   # Safety feature disabled if user selected -1
+                    afss_safe_mode = self.autofocus.afss_max_fails != -1  # Safety feature disabled if user selected -1
                     if any(v == self.autofocus.afss_max_fails for v in self.afss_fail_counter.values()) \
                             and afss_safe_mode:
-                                self.autofocus.reset_afss_corrections()
-                                # self.autofocus.next_afss_mode()
-                                # self.autofocus.afss_next_activation += self.autofocus.interval
-                                msg = f'{self.autofocus.afss_mode.capitalize()} run will be triggered at ' \
-                                      f'slice {self.autofocus.afss_next_activation + self.autofocus.interval}'
-                                # f'slice {self.autofocus.afss_next_activation}'
-                                utils.log_info('AFSS', msg)
-                                self.add_to_main_log('AFSS: ' + msg)
-                                self.autofocus.afss_active = False
-                                self.error_state = Error.autofocus_afss
-                                self.pause_acquisition(1)
+                        self.autofocus.reset_afss_corrections()
+                        # self.autofocus.next_afss_mode()
+                        # self.autofocus.afss_next_activation += self.autofocus.interval
+                        msg = f'{self.autofocus.afss_mode.capitalize()} run will be triggered at ' \
+                              f'slice {self.autofocus.afss_next_activation + self.autofocus.interval}'
+                        utils.log_info('AFSS', msg)
+                        self.add_to_main_log('AFSS: ' + msg)
+                        self.autofocus.afss_active = False
+                        self.error_state = Error.autofocus_afss
+                        self.pause_acquisition(1)
 
                 self.autofocus.reset_afss_corrections()
                 self.autofocus.afss_next_activation += self.autofocus.interval
@@ -2014,7 +2013,8 @@ class Acquisition:
             if self.autofocus.afss_offset == 0 and any(x in self.tiles_acquired for x in ref_tiles):
                 self.autofocus.afss_next_activation += 1
                 utils.log_info('CTRL', 'AFSS activation postponed to the next slice (some ref.tiles already imaged).')
-                self.add_to_main_log('CTRL: AFSS activation postponed to the next slice (some ref.tiles already imaged).')
+                self.add_to_main_log(
+                    'CTRL: AFSS activation postponed to the next slice (some ref.tiles already imaged).')
 
             series_active = self.autofocus.afss_next_activation \
                             <= self.slice_counter \
@@ -2034,12 +2034,6 @@ class Acquisition:
                     self.autofocus.get_afss_factors(tile_keys=ref_tiles_keys,
                                                     shuffle=self.autofocus.afss_shuffle,
                                                     hyper_shuffle=self.autofocus.afss_hyper_shuffle)
-                    # print(f'Shuffled series: {self.autofocus.afss_perturbation_series}')
-                # fct = self.autofocus.afss_perturbation_series[self.autofocus.afss_current_round]
-                # self.afss_deltas = fct * np.asarray((self.autofocus.afss_wd_delta,
-                #                                      self.autofocus.afss_stig_x_delta,
-                #                                      self.autofocus.afss_stig_y_delta))
-
                 # Apply AFSS perturbations for all ref. tiles in active grids
                 if self.slice_counter == self.autofocus.afss_next_activation:
                     self.autofocus.afss_wd_stig_orig = {}
@@ -2054,17 +2048,13 @@ class Acquisition:
                     # Apply WD/StigX/StigY perturbation
                     fct = self.autofocus.afss_perturbation_series[tile_key][self.autofocus.afss_current_round]
                     if self.autofocus.afss_mode == 'focus':
-                        # self.gm[grid_index][tile_index].wd += self.afss_deltas[0]
                         delta_wd = fct * self.autofocus.afss_wd_delta
-                        # print(f'Tile: {tile_key}, fct={fct}, delta_wd = {delta_wd}')
                         self.gm[grid_index][tile_index].wd += delta_wd
                     elif self.autofocus.afss_mode == 'stig_x':
-                        # delta_stig = np.asarray((self.afss_deltas[1], 0))
                         delta_stig = np.asarray((fct * self.autofocus.afss_stig_x_delta, 0))
                         new_stig_xy = np.asarray(self.gm[grid_index][tile_index].stig_xy) + delta_stig
                         self.gm[grid_index][tile_index].stig_xy = new_stig_xy
                     elif self.autofocus.afss_mode == 'stig_y':
-                        # delta_stig = np.asarray((0, self.afss_deltas[2]))
                         delta_stig = np.asarray((0, fct * self.autofocus.afss_stig_y_delta))
                         new_stig_xy = np.asarray(self.gm[grid_index][tile_index].stig_xy) + delta_stig
                         self.gm[grid_index][tile_index].stig_xy = new_stig_xy
@@ -2073,7 +2063,6 @@ class Acquisition:
                                f'Automated {self.autofocus.afss_mode.capitalize()} series active '
                                f'({self.autofocus.afss_current_round + 1}/{self.autofocus.afss_rounds})')
                 if self.autofocus.afss_mode == 'focus':
-                    # utils.log_info('AFSS', 'delta wd = {0:+.3f} um'.format(self.afss_deltas[0] * 10**6))
                     utils.log_info('AFSS', 'delta wd = {0:+.3f} um'.format(delta_wd * 10 ** 6))
                     self.add_to_main_log(
                         f'AFSS: Automated Focus series active '
@@ -2173,7 +2162,7 @@ class Acquisition:
             self.interrupted_at = []
             self.acq_interrupted = False
 
-        # If there was no (new) interuption, reset self.grids_acquired
+        # If there was no (new) interruption, reset self.grids_acquired
         if not self.acq_interrupted:
             self.grids_acquired = []
 
@@ -2189,7 +2178,7 @@ class Acquisition:
         # Focus parameters must be adjusted for each tile individually if focus
         # gradient is active or if autofocus/tracked focus is used with
         # "track all" or "best fit" option.
-        # Otherwise wd_default, stig_x_default, and stig_y_default are used.
+        # Otherwise, wd_default, stig_x_default, and stig_y_default are used.
         adjust_wd_stig = (
                 self.gm[grid_index].use_wd_gradient
                 or (self.use_autofocus and self.autofocus.tracking_mode < 5))
@@ -2296,7 +2285,7 @@ class Acquisition:
                     elif self.error_state != Error.none:
                         self.pause_acquisition(1)
                         break
-                # End of tile aquisition while loop
+                # End of tile acquisition while loop
 
                 if tile_accepted and tile_selected and not tile_skipped:
                     # Write tile's name and position into imagelist
@@ -2434,7 +2423,7 @@ class Acquisition:
             # Also skip if acquisition has been paused (already solved by acq_paused)
             # TODO look what happens if acquisition is interrupted (does it equal 'pause' ?)
             if self.autofocus.afss_active and not self.do_afss_corrections and not self.acq_paused:
-                utils.log_info('AFSS', 'Setting up original WD values after grid finished.')
+                # utils.log_info('AFSS', 'Setting up original WD values after grid finished.')
                 ref_tiles = self.gm[grid_index].autofocus_ref_tiles()
                 for tile_index in ref_tiles:
                     key = f'{grid_index}.{tile_index}'
@@ -2564,7 +2553,7 @@ class Acquisition:
                 self.add_to_main_log(
                     'CTRL: Tile %s: Image file already exists!' % tile_id)
 
-        # Proceed if no error has ocurred and tile not skipped:
+        # Proceed if no error has occurred and tile not skipped:
         if self.error_state == Error.none and not tile_skipped:
 
             # Show updated XY stage coordinates in Main Controls GUI
@@ -2665,7 +2654,6 @@ class Acquisition:
             # Check if image was saved and process it
             if os.path.isfile(save_path):
                 # identify appropriate image mask for quality monitor (based on image width value)
-                masking = False
                 tile_width, tile_height = self.gm[grid_index].frame_size
                 mask_key = [key for key, size in self.gm.tile_sizes.items() if size[0] == tile_width][0]
                 if mask_key:
@@ -2991,7 +2979,7 @@ class Acquisition:
             af_type = '(stig only)'
         wd = self.sem.get_wd()
         sx, sy = self.sem.get_stig_xy()
-        # added to adjust WD and stig values to tiles which are just used for autofocus!
+        # added to adjust WD and stig values to tile which are just used for autofocus!
         tile_wd = self.gm[grid_index][tile_index].wd
         tile_stig_x = self.gm[grid_index][tile_index].stig_xy[0]
         tile_stig_y = self.gm[grid_index][tile_index].stig_xy[1]
@@ -3031,7 +3019,8 @@ class Acquisition:
             self.error_state = Error.autofocus_smartsem
         elif not self.autofocus.wd_stig_diff_below_max(tile_wd, tile_stig_x, tile_stig_y):
             msg = (
-                f'Autofocus for tile {grid_index}.{tile_index} out of range with new values: {self.sem.get_wd() * 1000} (WD), '
+                f'Autofocus for tile {grid_index}.{tile_index} out of range with new values: '
+                f'{self.sem.get_wd() * 1000} (WD), '
                 f'{self.sem.get_stig_xy()} (stig_xy).')
             utils.log_error('STAGE', msg)
             self.add_to_main_log(msg)
@@ -3132,7 +3121,7 @@ class Acquisition:
                     and avg_grid_stig_y is not None):
                 # Apply corrections. At the moment, all reference tiles are
                 # checked individually if the difference in wd/stig from
-                # the autofocus correction is within the permissable limit,
+                # the autofocus correction is within the permissible limit,
                 # so there is no need to check the averages.
                 # TODO: Make this more robust, for example allow individual
                 # deviations above the limit if the average is within the limit,

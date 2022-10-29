@@ -17,8 +17,8 @@ et al. (2011), described in Appendix A of Binding et al. (2012).
 
 import os.path
 import random
-from time import sleep, time
-from typing import Union, Tuple, Optional, List, Any
+from time import sleep
+from typing import Tuple
 from math import sqrt, exp, sin, cos
 from statistics import mean
 
@@ -33,7 +33,7 @@ import autofocus_mapfost
 import utils
 
 
-class Autofocus():
+class Autofocus:
 
     def __init__(self, config, sem, grid_manager):
         self.cfg = config
@@ -153,7 +153,6 @@ class Autofocus():
 
     def afss_verify_results(self) -> Tuple[int, dict, bool, dict]:
         m = self.afss_mode
-        rmse_limit = 1.0e2
         rmse_limit = self.afss_rmse_limit
 
         rejected_fits = {}
@@ -194,8 +193,8 @@ class Autofocus():
         return nr_of_reliable_fits, rejected_fits, thr_ok, rejected_thr
 
     def afss_compute_pair_drifts(self):
+        print(self.afss_wd_stig_corr)
         for tile_key in self.afss_wd_stig_corr:
-            # print(f'Processing drifts: {tile_key} ')
             filenames = []
             for slice_nr in self.afss_wd_stig_corr[tile_key]:
                 img_path = self.afss_wd_stig_corr[tile_key][slice_nr][3]
@@ -236,6 +235,7 @@ class Autofocus():
             arr -= np.min(arr)
             arr /= np.max(arr)
             return arr
+
         m = self.afss_mode
         # print(self.afss_wd_stig_corr)
         for tile_key in self.afss_wd_stig_corr:
@@ -252,7 +252,8 @@ class Autofocus():
                 x_vals = np.append(x_vals, tile_dict[slice_nr][d[m][0]][d[m][1]])  # WD, StigX or StigY series
                 y_vals = np.append(y_vals, tile_dict[slice_nr][2])  # List of sharpness values
                 y_vals_std = np.append(y_vals_std, tile_dict[slice_nr][4])  # List of 'contrast' values
-            y_vals = np.sqrt(norm_data(norm_data(y_vals)**2 + norm_data(y_vals_std)**2))  # Combined sharpness metric
+            y_vals = np.sqrt(
+                norm_data(norm_data(y_vals) ** 2 + norm_data(y_vals_std) ** 2))  # Combined sharpness metric
 
             # INTERPOLATION
             if self.afss_interpolation_method == 'spline':
@@ -264,7 +265,7 @@ class Autofocus():
                 self.afss_wd_stig_corr_optima[tile_key] = [x_opt, 0]
             elif self.afss_interpolation_method == 'polyfit':
                 # POLYNOMIAL FIT
-                cfs = np.polyfit(x_vals, y_vals, 2)
+                cfs = np.polyfit(x_vals, y_vals, deg=2, full=False, cov=False)
                 x_fit = np.linspace(min(x_vals), max(x_vals), num=1001, endpoint=True)
                 y_fit = cfs[0] * x_fit ** 2 + cfs[1] * x_fit + cfs[2]
                 x_opt = -cfs[1] / (2 * cfs[0])
@@ -374,11 +375,11 @@ class Autofocus():
         mode = self.afss_mode
         consensus_modes = ['Average', 'tile_specific', 'focus_specific_stig_average']
         avg_mode = consensus_modes[self.afss_consensus_mode]
-        
+
         if self.afss_consensus_mode == 0 or (self.afss_consensus_mode == 2 and self.afss_mode != 'focus'):
             mean_diff, nr_of_outs = self.get_average_afss_correction(
-                                            do_filtering=self.afss_filter_outliers,
-                                            do_weighted_average=self.afss_weighted_averaging)
+                do_filtering=self.afss_filter_outliers,
+                do_weighted_average=self.afss_weighted_averaging)
 
         for tile_key in self.afss_wd_stig_orig:
             g, t = map(int, str.split(tile_key, '.'))
@@ -402,7 +403,8 @@ class Autofocus():
                     else:
                         wd_new = self.afss_wd_stig_corr_optima[tile_key][0]
                         diffs[tile_key] = wd_new - wd_orig
-                        msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((diffs[tile_key]) * 10 ** 6, 3)} um.'
+                        msgs[
+                            tile_key] = f'AFSS: Tile {tile_key}, delta WD = {round((diffs[tile_key]) * 10 ** 6, 3)} um.'
                     self.gm[g][t].wd = wd_new
                 # Update original values by new results
                 self.afss_wd_stig_orig[tile_key][0][0] = self.gm[g][t].wd
@@ -431,7 +433,7 @@ class Autofocus():
                 self.afss_wd_stig_orig[tile_key][1] = self.gm[g][t].stig_xy
             elif mode == 'stig_y':
                 stig_x_orig, stig_y_orig = self.afss_wd_stig_orig[tile_key][1]
-                if avg_mode == 'Average' or avg_mode =='focus_specific_stig_average':
+                if avg_mode == 'Average' or avg_mode == 'focus_specific_stig_average':
                     stig_y_new = mean_diff + stig_y_orig
                     self.gm[g][t].stig_xy = [stig_x_orig, stig_y_new]
                     if tile_key not in self.afss_wd_stig_corr_optima:
@@ -611,7 +613,7 @@ class Autofocus():
         """
         MAPFoSt calibration
         Rangoli Saxena, 2020.
-        Still in development. In case of issues, please raise them on github to help make this better.
+        Still in development. In case of issues, please raise them on GitHub to help make this better.
         Returns: mapfost calibration parameters
 
         """
@@ -659,12 +661,12 @@ class Autofocus():
         autocorr = autocorr[int(height / 2 - 32):int(height / 2 + 32),
                    int(width / 2 - 32):int(width / 2 + 32)]
         # Calculate coefficients
-        fi = self.muliply_with_mask(autocorr, self.fi_mask)
-        fo = self.muliply_with_mask(autocorr, self.fo_mask)
-        apx = self.muliply_with_mask(autocorr, self.apx_mask)
-        amx = self.muliply_with_mask(autocorr, self.amx_mask)
-        apy = self.muliply_with_mask(autocorr, self.apy_mask)
-        amy = self.muliply_with_mask(autocorr, self.amy_mask)
+        fi = self.multiply_with_mask(autocorr, self.fi_mask)
+        fo = self.multiply_with_mask(autocorr, self.fo_mask)
+        apx = self.multiply_with_mask(autocorr, self.apx_mask)
+        amx = self.multiply_with_mask(autocorr, self.amx_mask)
+        apy = self.multiply_with_mask(autocorr, self.apy_mask)
+        amy = self.multiply_with_mask(autocorr, self.amy_mask)
         # Check if tile_key not in dictionary yet
         if not (tile_key in self.foc_est):
             self.foc_est[tile_key] = []
@@ -733,9 +735,9 @@ class Autofocus():
                 stig_x_corr.append(self.wd_stig_corr[tile_key][1])
                 stig_y_corr.append(self.wd_stig_corr[tile_key][2])
         if wd_corr:
-            return (mean(wd_corr), mean(stig_x_corr), mean(stig_y_corr))
+            return mean(wd_corr), mean(stig_x_corr), mean(stig_y_corr)
         else:
-            return (None, None, None)
+            return None, None, None
 
     def apply_heuristic_tile_corrections(self):
         """Apply individual tile corrections."""
@@ -773,7 +775,7 @@ class Autofocus():
                 self.apy_mask[i, j] = 0.5 * (sinφ + cosφ) ** 2 * exp_astig
                 self.amy_mask[i, j] = 0.5 * (sinφ - cosφ) ** 2 * exp_astig
 
-    def muliply_with_mask(self, autocorr, mask):
+    def multiply_with_mask(self, autocorr, mask):
         numerator_sum = 0
         norm = 0
         for i in range(self.ACORR_WIDTH):

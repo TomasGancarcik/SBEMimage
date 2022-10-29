@@ -18,7 +18,6 @@ import numpy as np
 
 from skimage.io import imread
 from imageio import imwrite
-from skimage.registration import phase_cross_correlation
 from scipy.signal import medfilt2d
 from collections import deque
 from PIL import Image
@@ -128,7 +127,7 @@ class ImageInspector:
         mean and stddev, and check if image appears incomplete.
         """
         img = None
-        mean, stddev = 0, 0
+        mean, stddev, sharpness = 0, 0, 0
         load_error = False
         load_exception = ''
         grab_incomplete = False
@@ -145,10 +144,7 @@ class ImageInspector:
             # Calculate mean and stddev
             mean = np.mean(img)
             stddev = np.std(img)
-
-            # TODO consider computing sharpness only for tracked tiles
             sharpness = np.mean(sobel(img))
-            # sharpness = stddev
 
             # Was complete image grabbed? Test if first or final line of image
             # is black/white/uniform greyscale
@@ -164,6 +160,7 @@ class ImageInspector:
         range_test_passed, slice_by_slice_test_passed = False, False
         frozen_frame_error = False
         tile_selected = False
+        err = False
 
         # Skip tests in MagC mode if memory usage too high
         # TODO: Look into this
@@ -191,23 +188,7 @@ class ImageInspector:
         else:
             ma_mean, ma_stddev, ma_sharp = 0, 0, 0
 
-        # ref_img = None
-        # drift = (0, 0)
-        # ref_img_fn = utils.get_ref_img_fn(filename)
-        # ref_img_load_err = False
-        # try:
-        #     ref_img = imread(ref_img_fn)
-        # except:
-        #     #print('Can not read reference image.')
-        #     ref_img_load_err = True
-        #
-        # if not ref_img_load_err:
-        #     drift = self.compute_drift(filename)
-        # else:
-        #     drift = ('NaN', 'NaN')
-
         if not (load_error and err):
-
             tile_key = ('g' + str(grid_index).zfill(utils.GRID_DIGITS)
                         + '_' + 't' + str(tile_index).zfill(utils.TILE_DIGITS))
             tile_key_short = str(grid_index) + '.' + str(tile_index)
@@ -241,7 +222,7 @@ class ImageInspector:
             self.tile_reslice_line[tile_key] = img_reslice_line
 
             # Save mean and std in memory. Add key to dictionary if tile is new.
-            if not tile_key in self.tile_means:
+            if tile_key not in self.tile_means:
                 self.tile_means[tile_key] = []
             # Save mean and stddev in tile list
             if len(self.tile_means[tile_key]) > 1:
@@ -250,19 +231,19 @@ class ImageInspector:
             # Add the newest
             self.tile_means[tile_key].append((slice_counter, mean))
 
-            if not tile_key in self.tile_stddevs:
+            if tile_key not in self.tile_stddevs:
                 self.tile_stddevs[tile_key] = []
             if len(self.tile_stddevs[tile_key]) > 1:
                 self.tile_stddevs[tile_key].pop(0)
             self.tile_stddevs[tile_key].append((slice_counter, stddev))
 
-            if not tile_key in self.tile_sharpnesses:
+            if tile_key not in self.tile_sharpnesses:
                 self.tile_sharpnesses[tile_key] = []
             if len(self.tile_sharpnesses[tile_key]) > 1:
                 self.tile_sharpnesses[tile_key].pop(0)
             self.tile_sharpnesses[tile_key].append((slice_counter, sharpness))
 
-            if not tile_key in self.tile_stats:
+            if tile_key not in self.tile_stats:
                 self.tile_stats[tile_key] = []
             if len(self.tile_stats[tile_key]) > 1:
                 self.tile_stats[tile_key].pop(0)
@@ -348,9 +329,9 @@ class ImageInspector:
                     file.write(str(slice_counter).zfill(utils.SLICE_DIGITS)
                                + ';' + "{:.3f}".format(self.tile_means[tile_key][-1][1])
                                + ';' + "{:.3f}".format(self.tile_stddevs[tile_key][-1][1])
-                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][1])    # masked mean
-                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][2])    # masked stddev
-                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][3])    # masked sharpness
+                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][1])  # masked mean
+                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][2])  # masked stddev
+                               + ';' + "{:.3f}".format(self.tile_stats[tile_key][-1][3])  # masked sharpness
                                + '\n')
             except Exception as e:
                 success = False  # writing to disk failed

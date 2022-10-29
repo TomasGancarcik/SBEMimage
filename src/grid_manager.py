@@ -24,11 +24,10 @@ import os
 import json
 import yaml
 import copy
-import itertools
 
 import numpy as np
 from statistics import mean
-from typing import List, Optional
+from typing import List
 from math import sqrt, radians, sin, cos
 from PyQt5.QtGui import QPixmap
 import scipy
@@ -143,9 +142,9 @@ class Grid:
         # If not specified, use 5% of the image width, rounded to 10px
         if overlap is None:
             overlap = round(0.05 * self.frame_size[0], -1)
-        
+
         self.overlap = overlap
-        
+
         # Use device-dependent default for dwell time if no dwell time selector specified
         if dwell_time_selector is None:
             dwell_time_selector = self.sem.DWELL_TIME_DEFAULT_INDEX
@@ -153,7 +152,7 @@ class Grid:
         # Dwell time in microseconds (float)
         self.dwell_time = dwell_time
         self.dwell_time_selector = dwell_time_selector
-        
+
         # Pixel size in nm (float)
         self.pixel_size = pixel_size
 
@@ -174,13 +173,13 @@ class Grid:
         # self.__tiles
         self.wd_gradient_ref_tiles = wd_gradient_ref_tiles
         self.wd_gradient_params = wd_gradient_params
-        #----- MagC variables -----#
+        # ----- MagC variables -----#
         # used in MagC: these autofocus locations are defined relative to the
         # center of the non-rotated grid. Use setter and getter
         self.magc_autofocus_points_source = []
         self.magc_polyroi_points_source = []
 
-        #--------------------------#
+        # --------------------------#
 
     @property
     def magc_polyroi_points(self):
@@ -202,25 +201,25 @@ class Grid:
                 transformed_poly_point)
             # check polygon
             if utils.is_valid_polygon(
-                self.magc_polyroi_points_source):
+                    self.magc_polyroi_points_source):
                 return
             else:
                 del self.magc_polyroi_points_source[-1]
 
             # # for i in range(len(self.magc_polyroi_points_source) + 1):
-                # # # insert new point
-                # # self.magc_polyroi_points_source.append(
-                    # # transformed_poly_point)
-                # # # check polygon
-                # # if utils.is_valid_polygon(
-                    # # self.magc_polyroi_points_source):
-                    # # return
-                # # else:
-                    # # del self.magc_polyroi_points_source[-1]
-                # # # rotate polygon and try again
-                # # self.magc_polyroi_points_source = (
-                    # # self.magc_polyroi_points_source[1:]
-                    # # + self.magc_polyroi_points_source[:1])
+            # # # insert new point
+            # # self.magc_polyroi_points_source.append(
+            # # transformed_poly_point)
+            # # # check polygon
+            # # if utils.is_valid_polygon(
+            # # self.magc_polyroi_points_source):
+            # # return
+            # # else:
+            # # del self.magc_polyroi_points_source[-1]
+            # # # rotate polygon and try again
+            # # self.magc_polyroi_points_source = (
+            # # self.magc_polyroi_points_source[1:]
+            # # + self.magc_polyroi_points_source[:1])
 
     def magc_delete_last_polyroi_point(self):
         if self.magc_polyroi_points_source != []:
@@ -265,12 +264,12 @@ class Grid:
 
         transformed_points = []
 
-        grid_center_c = np.dot(self.centre_sx_sy, [1,1j])
+        grid_center_c = np.dot(self.centre_sx_sy, [1, 1j])
         for point in input_points:
-            point_c = np.dot(point, [1,1j])
+            point_c = np.dot(point, [1, 1j])
             transformed_point_c = (
-                grid_center_c
-                + point_c
+                    grid_center_c
+                    + point_c
                     * np.exp(1j * np.radians(self.rotation)))
 
             transformed_point = (
@@ -279,7 +278,7 @@ class Grid:
 
             if self.cs.magc_wafer_calibrated:
                 (transformed_point_x,
-                transformed_point_y) = utils.applyAffineT(
+                 transformed_point_y) = utils.applyAffineT(
                     [transformed_point[0]],
                     [transformed_point[1]],
                     self.magc_wafer_transform)
@@ -298,13 +297,13 @@ class Grid:
         # _c indicates complex number
         grid_center_c = np.dot(
             self.centre_sx_sy,
-            [1,1j])
+            [1, 1j])
 
         # updating input_points if wafer_calibrated
         # overwriting same variable
         if self.cs.magc_wafer_calibrated:
             (transformed_points_x,
-            transformed_points_y ) = utils.applyAffineT(
+             transformed_points_y) = utils.applyAffineT(
                 [input_point[0] for input_point in input_points],
                 [input_point[1] for input_point in input_points],
                 utils.invertAffineT(self.magc_wafer_transform))
@@ -316,11 +315,11 @@ class Grid:
         for point in input_points:
             point_c = np.dot(
                 point,
-                [1,1j])
+                [1, 1j])
 
             transformed_point_c = (
-                (point_c - grid_center_c)
-                * np.exp(1j * np.radians(-self.rotation)))
+                    (point_c - grid_center_c)
+                    * np.exp(1j * np.radians(-self.rotation)))
 
             transformed_point = (
                 np.real(transformed_point_c),
@@ -392,7 +391,7 @@ class Grid:
             if (ref_tiles[1] > ref_tiles[0]) and (row0 == row1):
                 x_diff = ref_tiles[1] - ref_tiles[0]
                 slope_x = (self.__tiles[ref_tiles[0]].wd
-                           - self.__tiles[ref_tiles[1]].wd)/x_diff
+                           - self.__tiles[ref_tiles[1]].wd) / x_diff
             else:
                 success = False
             # Tile3 must be below Tile0 and in the same column:
@@ -401,7 +400,7 @@ class Grid:
             if (ref_tiles[2] > ref_tiles[0]) and (col0 == col2):
                 y_diff = (ref_tiles[2] - ref_tiles[0]) // row_length
                 slope_y = (self.__tiles[ref_tiles[0]].wd
-                           - self.__tiles[ref_tiles[2]].wd)/y_diff
+                           - self.__tiles[ref_tiles[2]].wd) / y_diff
             else:
                 success = False
 
@@ -422,9 +421,9 @@ class Grid:
                     for x_pos in range(self.size[1]):
                         tile_index = y_pos * row_length + x_pos
                         self.__tiles[tile_index].wd = (
-                            wd_at_origin
-                            + x_pos * slope_x
-                            + y_pos * slope_y)
+                                wd_at_origin
+                                + x_pos * slope_x
+                                + y_pos * slope_y)
         else:
             success = False
         return success
@@ -691,7 +690,7 @@ class Grid:
             # Set bool flags for ref tiles
             for tile_index in range(self.number_tiles):
                 self.__tiles[tile_index].wd_grad_active = (
-                    tile_index in ref_tiles)
+                        tile_index in ref_tiles)
 
     def wd_gradient_ref_tile_selector_list(self):
         selector_list = []
@@ -762,7 +761,7 @@ class Grid:
         for tile in self.__tiles:
             if tile.wd > 0:
                 # A working distance of 0 means that focus parameters have
-                # not been set for this tile and it can be disregarded.
+                # not been set for this tile, and it can be disregarded.
                 stig_x_list.append(tile.stig_xy[0])
                 stig_y_list.append(tile.stig_xy[1])
         if stig_x_list:
@@ -792,7 +791,7 @@ class Grid:
         """Compute the distance between two tile centres in microns."""
         dx1, dy1 = self.__tiles[tile_index1].dx_dy
         dx2, dy2 = self.__tiles[tile_index2].dx_dy
-        return sqrt((dx1 - dx2)**2 + (dy1 - dy2)**2)
+        return sqrt((dx1 - dx2) ** 2 + (dy1 - dy2) ** 2)
 
     @property
     def active_tiles(self):
@@ -850,10 +849,10 @@ class Grid:
         rows, cols = self.size
         ordered_active_tiles = []
         for row_pos in range(rows):
-            if (row_pos % 2 == 0):
+            if row_pos % 2 == 0:
                 start_col, end_col, step = 0, cols, 1
             else:
-                start_col, end_col, step = cols-1, -1, -1
+                start_col, end_col, step = cols - 1, -1, -1
             for col_pos in range(start_col, end_col, step):
                 tile_index = row_pos * cols + col_pos
                 if self.__tiles[tile_index].tile_active:
@@ -867,16 +866,16 @@ class Grid:
         tile_width_d = self.tile_width_d()
         tile_height_d = self.tile_height_d()
         # Calculate bounding box (unrotated):
-        top_left_dx = grid_origin_dx + tile_dx - tile_width_d/2
-        top_left_dy = grid_origin_dy + tile_dy - tile_height_d/2
+        top_left_dx = grid_origin_dx + tile_dx - tile_width_d / 2
+        top_left_dy = grid_origin_dy + tile_dy - tile_height_d / 2
         points_x = [top_left_dx, top_left_dx + tile_width_d,
                     top_left_dx, top_left_dx + tile_width_d]
         points_y = [top_left_dy, top_left_dy,
                     top_left_dy + tile_height_d, top_left_dy + tile_height_d]
         theta = radians(self.rotation)
         if theta > 0:
-            pivot_dx = top_left_dx + tile_width_d/2
-            pivot_dy = top_left_dy + tile_height_d/2
+            pivot_dx = top_left_dx + tile_width_d / 2
+            pivot_dy = top_left_dy + tile_height_d / 2
             for i in range(4):
                 points_x[i] -= pivot_dx
                 points_y[i] -= pivot_dy
@@ -911,10 +910,11 @@ class Grid:
 
     # TODO (?)
     def store_wd_stig_before_afss(self):
-        #ref_tiles = self.gm.autofocus_ref_tiles
-        #for tile_key in ref_tiles:
+        # ref_tiles = self.gm.autofocus_ref_tiles
+        # for tile_key in ref_tiles:
         #    self.afss_wd_stig_orig[tile_key] = self.gm[]
         return None
+
 
 class GridManager:
 
@@ -1014,8 +1014,8 @@ class GridManager:
                     base_dir, utils.tile_relative_save_path(
                         stack_name, g, t, slice_counter - 1))
                 if (os.path.isfile(preview_path)
-                    and (os.path.isfile(tile_path_current)
-                         or os.path.isfile(tile_path_previous))):
+                        and (os.path.isfile(tile_path_current)
+                             or os.path.isfile(tile_path_previous))):
                     self.__grids[g][t].preview_img = QPixmap(preview_path)
                 else:
                     self.__grids[g][t].preview_img = None
@@ -1033,12 +1033,12 @@ class GridManager:
 
         # Available tile aspect ratios/sizes
         self.tile_sizes = {'mask_8k': (8192, 6144),
-                      'mask_6k': (6144, 4608),
-                      'mask_4k': (4096, 3072),
-                      'mask_3k': (3072, 2304),
-                      'mask_2k': (2048, 1536),
-                      'mask_1k': (1024, 768),
-                      'mask_0k': (512, 384)}
+                           'mask_6k': (6144, 4608),
+                           'mask_4k': (4096, 3072),
+                           'mask_3k': (3072, 2304),
+                           'mask_2k': (2048, 1536),
+                           'mask_1k': (1024, 768),
+                           'mask_0k': (512, 384)}
 
     def fit_apply_aberration_gradient(self):
         dc_aberr = dict()
@@ -1131,9 +1131,9 @@ class GridManager:
             for t in range(self.__grids[g].number_tiles):
                 tile_key = str(g) + '.' + str(t)
                 if (self.__grids[g][t].wd > 0
-                    and (self.__grids[g][t].tile_active
-                         or self.__grids[g][t].autofocus_active
-                         or self.__grids[g][t].wd_grad_active)):
+                        and (self.__grids[g][t].tile_active
+                             or self.__grids[g][t].autofocus_active
+                             or self.__grids[g][t].wd_grad_active)):
                     # Only save tiles with WD != 0 which are active or
                     # selected for autofocus or wd gradient.
                     wd_stig_dict[tile_key] = [
@@ -1181,7 +1181,7 @@ class GridManager:
         if self.sem.magc_mode or self.sem.syscfg['device']['microtome'] == '6':  # or GCIB in use
             # Cycle through available colours.
             display_colour = (
-                (self.__grids[new_grid_index - 1].display_colour + 1) % 10)
+                    (self.__grids[new_grid_index - 1].display_colour + 1) % 10)
         else:
             # Use green by default in magc_mode.
             display_colour = 1
@@ -1248,7 +1248,7 @@ class GridManager:
             self.__grids[grid_index][tile_index].sx_sy)
         width_d = self.__grids[grid_index].width_d()
         height_d = self.__grids[grid_index].height_d()
-        return int((dx - width_d/2) * 1000), int((dy - height_d/2) * 1000)
+        return int((dx - width_d / 2) * 1000), int((dy - height_d / 2) * 1000)
 
     def total_number_active_grids(self):
         """Return the total number of active grids."""
@@ -1363,7 +1363,7 @@ class GridManager:
                 self._autofocus_ref_tiles.append(str(g) + '.' + str(t))
                 self.__grids[g][t].autofocus_active = True
 
-# ----------------------------- MagC functions ---------------------------------
+    # ----------------------------- MagC functions ---------------------------------
 
     def propagate_source_grid_properties_to_target_grid(self,
                                                         source_grid_number,
@@ -1403,8 +1403,8 @@ class GridManager:
         sourceSectionGridAngle = np.angle(
             np.dot(sourceSectionGrid, [1, 1j]), deg=True)
 
-        target_grid_rotation = (((180-targetSectionAngle + sourceGridRotation -
-                                (180-sourceSectionAngle))) % 360)
+        target_grid_rotation = (((180 - targetSectionAngle + sourceGridRotation -
+                                  (180 - sourceSectionAngle))) % 360)
         self.__grids[t].rotation = target_grid_rotation
         self.__grids[t].size = self.__grids[s].size
         self.__grids[t].overlap = self.__grids[s].overlap
@@ -1428,12 +1428,12 @@ class GridManager:
         # xxx self.set_adaptive_focus_gradient(t, self.get_adaptive_focus_gradient(s))
 
         targetSectionGridAngle = (
-            sourceSectionGridAngle + sourceSectionAngle - targetSectionAngle)
+                sourceSectionGridAngle + sourceSectionAngle - targetSectionAngle)
 
         targetGridCenterComplex = (
-            np.dot(targetSectionCenter, [1, 1j])
-            + sourceSectionGridDistance
-            * np.exp(1j * np.radians(targetSectionGridAngle)))
+                np.dot(targetSectionCenter, [1, 1j])
+                + sourceSectionGridDistance
+                * np.exp(1j * np.radians(targetSectionGridAngle)))
         targetGridCenter = (
             np.real(targetGridCenterComplex),
             np.imag(targetGridCenterComplex))
@@ -1474,7 +1474,7 @@ class GridManager:
                     self.cs.magc_wafer_transform)
                 source_ROI = [result[0][0], result[1][0]]
                 source_ROI_angle = (
-                    (-90 + target_ROI_angle - transform_angle) % 360)
+                        (-90 + target_ROI_angle - transform_angle) % 360)
             else:
                 source_ROI = target_ROI
                 source_ROI_angle = (-90 + target_ROI_angle) % 360
