@@ -193,7 +193,6 @@ class Autofocus:
         return nr_of_reliable_fits, rejected_fits, thr_ok, rejected_thr
 
     def afss_compute_pair_drifts(self):
-        print(self.afss_wd_stig_corr)
         for tile_key in self.afss_wd_stig_corr:
             filenames = []
             for slice_nr in self.afss_wd_stig_corr[tile_key]:
@@ -463,25 +462,25 @@ class Autofocus:
 
     def get_afss_factors(self, tile_keys: dict, shuffle: bool, hyper_shuffle: bool):
         #  get list of WD or Stig perturbations to be used in automated focus/stig series
-        do_reflect = False
+        do_reflect = True
         do_duplicate = True
-        series = np.linspace(-1, 1, self.afss_rounds)
-
+        series = np.linspace(-1, 1, self.afss_rounds)   # for afss_rounds == 5: fcts = [-1, -0.5, 0.0, 0.5, 1]
         if shuffle:
-            random.shuffle(series)
+            random.shuffle(series)                       # shuffled:  fcts = [0, -0.5, 1.0, -1.0, 0.5]
         if not hyper_shuffle:
             if do_reflect:
                 new = []
-                for i, v in enumerate(series):
-                    new.append(v[i])
-                    new.append(v[::-1][i])
-                series = np.asarray(new[:len(series)])
+                x = series
+                for i in range(len(x)):
+                    new.append(x[i])
+                    new.append(x[::-1][i])
+                series = np.asarray(new[:len(x)])       # reflected: fcts = [-1, 1, -0.5, 0.5, 0]
             if do_duplicate:
                 new = []
-                for x in series:
+                for x in np.linspace(-1, 1, int(np.ceil(self.afss_rounds / 2))):
                     new.append(x)
                     new.append(x)
-                series = np.asarray(new[:len(series)])
+                series = np.asarray(new[:self.afss_rounds]) # duplicate: fcts = [-1, -1, 0, 0, 1]
             for key in tile_keys:
                 self.afss_perturbation_series[key] = series
         else:
@@ -490,6 +489,7 @@ class Autofocus:
                 np.random.shuffle(line)
             for i, key in enumerate(tile_keys):
                 self.afss_perturbation_series[key] = fcts[i, :]
+        print(series)
 
     def reset_afss_corrections(self):
         self.afss_wd_stig_corr = {}
