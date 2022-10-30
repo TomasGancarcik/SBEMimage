@@ -128,7 +128,7 @@ class ImageInspector:
         mean and stddev, and check if image appears incomplete.
         """
         img = None
-        mean, stddev = 0, 0
+        mean, stddev, sharpness = 0, 0, 0
         load_error = False
         load_exception = ''
         grab_incomplete = False
@@ -164,6 +164,7 @@ class ImageInspector:
         range_test_passed, slice_by_slice_test_passed = False, False
         frozen_frame_error = False
         tile_selected = False
+        err = False
 
         # Skip tests in MagC mode if memory usage too high
         # TODO: Look into this
@@ -191,23 +192,7 @@ class ImageInspector:
         else:
             ma_mean, ma_stddev, ma_sharp = 0, 0, 0
 
-        # ref_img = None
-        # drift = (0, 0)
-        # ref_img_fn = utils.get_ref_img_fn(filename)
-        # ref_img_load_err = False
-        # try:
-        #     ref_img = imread(ref_img_fn)
-        # except:
-        #     #print('Can not read reference image.')
-        #     ref_img_load_err = True
-        #
-        # if not ref_img_load_err:
-        #     drift = self.compute_drift(filename)
-        # else:
-        #     drift = ('NaN', 'NaN')
-
         if not (load_error and err):
-
             tile_key = ('g' + str(grid_index).zfill(utils.GRID_DIGITS)
                         + '_' + 't' + str(tile_index).zfill(utils.TILE_DIGITS))
             tile_key_short = str(grid_index) + '.' + str(tile_index)

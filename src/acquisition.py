@@ -2030,11 +2030,6 @@ class Acquisition:
                     self.autofocus.get_afss_factors(tile_keys=ref_tiles_keys,
                                                     shuffle=self.autofocus.afss_shuffle,
                                                     hyper_shuffle=self.autofocus.afss_hyper_shuffle)
-                    # print(f'Shuffled series: {self.autofocus.afss_perturbation_series}')
-                # fct = self.autofocus.afss_perturbation_series[self.autofocus.afss_current_round]
-                # self.afss_deltas = fct * np.asarray((self.autofocus.afss_wd_delta,
-                #                                      self.autofocus.afss_stig_x_delta,
-                #                                      self.autofocus.afss_stig_y_delta))
 
                 # Apply AFSS perturbations for all ref. tiles in active grids
                 if self.slice_counter == self.autofocus.afss_next_activation:

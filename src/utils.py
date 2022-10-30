@@ -1012,13 +1012,6 @@ def rmse(predictions: np.ndarray, targets: np.ndarray) -> float:
     return np.sqrt(np.mean((predictions-targets)**2))
 
 
-def compute_focus_index(img: np.ndarray) -> float:
-    gf1 = gaussian_filter(img, sigma=1, mode='reflect')
-    gf2 = gaussian_filter(img, sigma=4, mode='reflect')
-    fi = np.sum(np.sqrt((gf1 - gf2)**2)/len(img))
-    return fi
-
-
 def get_weights(input_array: list, smallest_weight: float) -> list:
     # Linear weighing is applied to the input_array (list of diffs from afss_series optima)
     # Values are recalibrated to the range [smallest_weight:1] where 1 is given to the

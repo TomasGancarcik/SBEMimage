@@ -32,6 +32,7 @@ from matplotlib import pyplot as plt
 import autofocus_mapfost
 import utils
 
+
 class Autofocus():
 
     def __init__(self, config, sem, grid_manager):
@@ -235,6 +236,7 @@ class Autofocus():
             arr -= np.min(arr)
             arr /= np.max(arr)
             return arr
+
         m = self.afss_mode
         # print(self.afss_wd_stig_corr)
         for tile_key in self.afss_wd_stig_corr:
@@ -250,7 +252,8 @@ class Autofocus():
                 x_vals = np.append(x_vals, tile_dict[slice_nr][d[m][0]][d[m][1]])  # WD, StigX or StigY series
                 y_vals = np.append(y_vals, tile_dict[slice_nr][2])  # List of sharpness values
                 y_vals_std = np.append(y_vals_std, tile_dict[slice_nr][4])  # List of 'contrast' values
-            y_vals = np.sqrt(norm_data(norm_data(y_vals)**2 + norm_data(y_vals_std)**2))  # Combined sharpness metric
+            y_vals = np.sqrt(
+                norm_data(norm_data(y_vals) ** 2 + norm_data(y_vals_std) ** 2))  # Combined sharpness metric
 
             # INTERPOLATION
             if self.afss_interpolation_method == 'spline':
@@ -372,11 +375,11 @@ class Autofocus():
         mode = self.afss_mode
         consensus_modes = ['Average', 'tile_specific', 'focus_specific_stig_average']
         avg_mode = consensus_modes[self.afss_consensus_mode]
-        
+
         if self.afss_consensus_mode == 0 or (self.afss_consensus_mode == 2 and self.afss_mode != 'focus'):
             mean_diff, nr_of_outs = self.get_average_afss_correction(
-                                            do_filtering=self.afss_filter_outliers,
-                                            do_weighted_average=self.afss_weighted_averaging)
+                do_filtering=self.afss_filter_outliers,
+                do_weighted_average=self.afss_weighted_averaging)
 
         for tile_key in self.afss_wd_stig_orig:
             g, t = map(int, str.split(tile_key, '.'))
@@ -391,7 +394,7 @@ class Autofocus():
                     else:
                         wd_opt = self.afss_wd_stig_corr_optima[tile_key][0]
                         diffs[tile_key] = wd_opt - wd_orig  # for logging purposes
-                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {diffs[tile_key]*10**6:.3f} um.'
+                    msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {diffs[tile_key] * 10 ** 6:.3f} um.'
                 elif avg_mode == 'tile_specific' or avg_mode == 'focus_specific_stig_average':
                     if tile_key not in self.afss_wd_stig_corr_optima.keys():
                         wd_new = self.afss_wd_stig_orig[tile_key][0][0]
@@ -400,7 +403,7 @@ class Autofocus():
                     else:
                         wd_new = self.afss_wd_stig_corr_optima[tile_key][0]
                         diffs[tile_key] = wd_new - wd_orig
-                        msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {diffs[tile_key]*10**6:.3f} um.'
+                        msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {diffs[tile_key] * 10 ** 6:.3f} um.'
                     self.gm[g][t].wd = wd_new
                 # Update original values by new results
                 self.afss_wd_stig_orig[tile_key][0][0] = self.gm[g][t].wd
@@ -429,7 +432,7 @@ class Autofocus():
                 self.afss_wd_stig_orig[tile_key][1] = self.gm[g][t].stig_xy
             elif mode == 'stig_y':
                 stig_x_orig, stig_y_orig = self.afss_wd_stig_orig[tile_key][1]
-                if avg_mode == 'Average' or avg_mode =='focus_specific_stig_average':
+                if avg_mode == 'Average' or avg_mode == 'focus_specific_stig_average':
                     stig_y_new = mean_diff + stig_y_orig
                     self.gm[g][t].stig_xy = [stig_x_orig, stig_y_new]
                     if tile_key not in self.afss_wd_stig_corr_optima:
@@ -461,26 +464,25 @@ class Autofocus():
 
     def get_afss_factors(self, tile_keys: dict, shuffle: bool, hyper_shuffle: bool):
         #  get list of WD or Stig perturbations to be used in automated focus/stig series
+        do_reflect = False
+        do_duplicate = True
         series = np.linspace(-1, 1, self.afss_rounds)
+
         if shuffle:
             random.shuffle(series)
         if not hyper_shuffle:
-            do_reflect = False
             if do_reflect:
                 new = []
-                x = series
-                for i, v in enumerate(x):
-                    new.append(x[i])
-                    new.append(x[::-1][i])
-                series = np.asarray(new[:len(x)])
-            do_duplicate = True
+                for i, v in enumerate(series):
+                    new.append(v[i])
+                    new.append(v[::-1][i])
+                series = np.asarray(new[:len(series)])
             if do_duplicate:
-                x = np.linspace(-1, 1, int(np.ceil(self.afss_rounds / 2)))
                 new = []
-                for x in x:
+                for x in series:
                     new.append(x)
                     new.append(x)
-                series = np.asarray(new)
+                series = np.asarray(new[:len(series)])
             for key in tile_keys:
                 self.afss_perturbation_series[key] = series
         else:
@@ -489,7 +491,6 @@ class Autofocus():
                 np.random.shuffle(line)
             for i, key in enumerate(tile_keys):
                 self.afss_perturbation_series[key] = fcts[i, :]
-        # print(self.afss_perturbation_series)
 
     def reset_afss_corrections(self):
         self.afss_wd_stig_corr = {}
