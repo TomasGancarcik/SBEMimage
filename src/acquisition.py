@@ -861,11 +861,12 @@ class Acquisition:
 
             # Define first activation of Automated Focus/Stig series if offset is non-zero
             self.autofocus.afss_next_activation = self.slice_counter + self.autofocus.afss_offset
-            d = {'focus': 'Focus', 'stig_x': 'Stigmator X', 'stig_y': 'Stigmator Y'}
-            msg = f'Automated {d[self.autofocus.afss_mode]} series will start ' \
-                  f'at slice: {self.autofocus.afss_next_activation}'
-            utils.log_info('CTRL', msg)
-            self.add_to_main_log('AFSS: ' + msg)
+            if self.use_autofocus and self.autofocus.method == 4:
+                d = {'focus': 'Focus', 'stig_x': 'Stigmator X', 'stig_y': 'Stigmator Y'}
+                msg = f'Automated {d[self.autofocus.afss_mode]} series will start ' \
+                      f'at slice: {self.autofocus.afss_next_activation}'
+                utils.log_info('CTRL', msg)
+                self.add_to_main_log('AFSS: ' + msg)
 
         # ========================= ACQUISITION LOOP ===========================
 
@@ -1245,8 +1246,6 @@ class Acquisition:
             # --------------- Processing of the Automated Focus/Stigmator series ----------------- #
             if self.afss_compute_drifts:
                 self.autofocus.afss_compute_pair_drifts()
-                # print('computing drifts')
-
             if self.do_afss_corrections:
                 d = {'focus': 'Focus', 'stig_x': 'Stigmator X', 'stig_y': 'Stigmator Y'}
                 msg = f'Processing {d[self.autofocus.afss_mode]} series.'

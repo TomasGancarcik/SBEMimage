@@ -489,7 +489,6 @@ class Autofocus:
                 np.random.shuffle(line)
             for i, key in enumerate(tile_keys):
                 self.afss_perturbation_series[key] = fcts[i, :]
-        print(series)
 
     def reset_afss_corrections(self):
         self.afss_wd_stig_corr = {}
