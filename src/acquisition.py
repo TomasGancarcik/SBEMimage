@@ -1266,11 +1266,12 @@ class Acquisition:
                     utils.log_info('AFSS', msg)
                     self.add_to_main_log('AFSS' + msg)
                     self.add_to_afss_log(msg)
-                    for rej_tile_key, val in rej_fits.items():
-                        utils.log_info('AFSS', val[1])
-                        self.add_to_main_log('AFSS' + val[1])
-                        self.add_to_afss_log(val[1])
-                if (nr_of_reliable_fits != 0) and thresholding_ok:
+                    for val in rej_fits.values():
+                        msg = val[1]
+                        utils.log_info('AFSS', msg)
+                        self.add_to_main_log('AFSS' + msg)
+                        self.add_to_afss_log(msg)
+                if thresholding_ok and (nr_of_reliable_fits != 0):
                     # Apply corrections to tracked tiles
                     mean_diff, log_msgs, nr_of_outliers = self.autofocus.apply_afss_corrections()
                     if self.autofocus.afss_filter_outliers and nr_of_outliers != 0:
@@ -1278,35 +1279,23 @@ class Acquisition:
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS' + msg)
                         self.add_to_afss_log(msg)
-                    # Log info about results of either focus or Stigmator series
-                    if self.autofocus.afss_consensus_mode == 0 or (
-                            self.autofocus.afss_consensus_mode == 2):  # mode 'Average' or combined
-                        if self.autofocus.afss_mode == 'focus':
-                            if self.autofocus.afss_consensus_mode == 0:
-                                msg = f'Applying average WD correction {mean_diff * 10 ** 6:.3f} um to all ' \
-                                      f'tracked tiles.'
-                                utils.log_info('AFSS', msg)
-                                self.add_to_main_log('AFSS' + msg)
-                                self.add_to_afss_log(msg)
-                            elif self.autofocus.afss_consensus_mode == 2:
-                                msg = f'Applying focus corrections to all tracked tiles'
-                                utils.log_info('AFSS', msg)
-                                self.add_to_main_log('AFSS: ' + msg)
-                                self.add_to_afss_log(msg)
-                        else:
-                            dd = dict(stig_x='StigX', stig_y='StigY')
-                            msg = f'Applying average {dd[self.autofocus.afss_mode]} correction ' \
-                                  f'{mean_diff:.3f} % to all tracked tiles.'
-                            utils.log_info('AFSS', msg)
-                            self.add_to_main_log('ASFF' + msg)
-                            self.add_to_afss_log(msg)
-                    elif self.autofocus.afss_consensus_mode == 1:  # Consensus mode 'Specific'
-                        msg = f'Applying {self.autofocus.afss_mode} corrections to all tracked tiles'
-                        utils.log_info('AFSS', msg)
-                        self.add_to_main_log('AFSS  : ' + msg)
-                        self.add_to_afss_log(msg)
-                    for tile_key in log_msgs:
-                        msg = log_msgs[tile_key]
+                    # Log info about results of either Focus or Stigmator series
+                    mode = self.autofocus.afss_mode
+                    if self.autofocus.afss_consensus_mode == 1:  # Consensus mode 'Specific'
+                        msg = f'Applying following {d[mode]} corrections to all tracked tiles:'
+                    else:
+                        if mode == 'focus' and self.autofocus.afss_consensus_mode == 2:
+                            msg = f'Applying following focus corrections to all tracked tiles:'
+                        else:  # Consensus mode: Average or Average Stig in the combined branch
+                            dx = {'focus': ['WD', f'{mean_diff * 10 ** 6:.3f} um'],
+                                  'stig_x': ['StigX', f'{mean_diff:.3f} %'],
+                                  'stig_y': ['StigY', f'{mean_diff:.3f} %']}
+                            msg = ' '.join(['Applying average', f'{dx[mode][0]}', 'correction', f'{dx[mode][1]}',
+                                            'to all tracked tiles.'])
+                    utils.log_info('AFSS', msg)
+                    self.add_to_main_log('ASFF' + msg)
+                    self.add_to_afss_log(msg)
+                    for msg in log_msgs.values():
                         self.add_to_main_log(msg)
                         self.add_to_afss_log(msg)
                         utils.log_info(msg.split(':')[0], msg.split(':')[1][1:])
@@ -1317,18 +1306,17 @@ class Acquisition:
                 else:
                     if nr_of_reliable_fits == 0:
                         msg = f'Interpolation of all tracked tiles failed. ' \
-                              f'Resetting original {self.autofocus.afss_mode} values.'
+                              f'Resetting original {d[self.autofocus.afss_mode]} values.'
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS: ' + msg)
                         self.add_to_afss_log(msg)
                     elif not thresholding_ok:
-                        if self.autofocus.afss_consensus_mode == 0 or (
-                                self.autofocus.afss_consensus_mode == 2 and self.autofocus.afss_mode != 'focus'):
-                            msg = f"WD/STIG average is out of the permitted range!"
-                            self.add_to_afss_log(msg)
+                        if self.autofocus.afss_consensus_mode == 0 or \
+                                (self.autofocus.afss_consensus_mode == 2 and self.autofocus.afss_mode != 'focus'):
+                            msg = f'{d[self.autofocus.afss_mode]} average is out of the permitted range!'
                         else:
-                            msg = f'WD/STIG differences of following tiles out of permitted range: '
-                            self.add_to_afss_log(msg)
+                            msg = f'{d[self.autofocus.afss_mode]} differences of following tiles ' \
+                                  f'out of permitted range: '
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS: ' + msg)
                         self.add_to_afss_log(msg)
@@ -1345,14 +1333,13 @@ class Acquisition:
                     # Follow up with next afss mode after unsuccessful run
                     # self.afss_fail_counter[self.autofocus.afss_mode] += 1
                     self.autofocus.next_afss_mode()
-                    # Safety feature in case of AFSS failed too many times
-                    afss_safe_mode = self.autofocus.afss_max_fails != -1  # Safety feature disabled if user selected -1
+                    # Safety feature in case of AFSS failed too many times (disabled if user selected -1)
+                    afss_safe_mode = self.autofocus.afss_max_fails != -1  # Safety feature
                     if any(v == self.autofocus.afss_max_fails for v in self.afss_fail_counter.values()) \
                             and afss_safe_mode:
                         self.autofocus.reset_afss_corrections()
                         # self.autofocus.next_afss_mode()
                         # self.autofocus.afss_next_activation += self.autofocus.interval
-                        d = {'focus': 'Focus', 'stig_x': 'Stigmator X', 'stig_y': 'Stigmator Y'}
                         msg = f'{d[self.autofocus.afss_mode]} run will be triggered at ' \
                               f'slice {self.autofocus.afss_next_activation + self.autofocus.interval}'
                         utils.log_info('AFSS', msg)
@@ -1364,7 +1351,6 @@ class Acquisition:
 
                 self.autofocus.reset_afss_corrections()
                 self.autofocus.afss_next_activation += self.autofocus.interval
-                d = {'focus': 'Focus', 'stig_x': 'Stigmator X', 'stig_y': 'Stigmator Y'}
                 msg = f'{d[self.autofocus.afss_mode]} run will be triggered ' \
                       f'at slice {self.autofocus.afss_next_activation}'
                 utils.log_info('AFSS', msg)
@@ -2063,7 +2049,7 @@ class Acquisition:
                     d = {'focus': 'Focus', 'stig_x': 'Stigmator X', 'stig_y': 'Stigmator Y'}
                     msg = f'{self.slice_counter} {d[self.autofocus.afss_mode]} series started. '
                     m = self.autofocus.afss_mode
-                    d = {'focus': (self.autofocus.afss_wd_delta * 10**6, ' um'),
+                    d = {'focus': (self.autofocus.afss_wd_delta * 10 ** 6, ' um'),
                          'stig_x': (self.autofocus.afss_stig_x_delta, ' %'),
                          'stig_y': (self.autofocus.afss_stig_y_delta, ' %')
                          }
@@ -2097,9 +2083,12 @@ class Acquisition:
 
                 m = self.autofocus.afss_mode
                 progress_str = f'({self.autofocus.afss_current_round + 1}/{self.autofocus.afss_rounds}): '
-                msgs = {'focus': 'Focus series active ' + progress_str + 'delta WD = {0:+.3f} um'.format(delta_wd * 10 ** 6),
-                        'stig_x': 'Stigmator X series active ' + progress_str + 'delta StigX = {0:+.2f} %'.format(delta_stig[0]),
-                        'stig_y': 'Stigmator Y series active ' + progress_str + 'delta StigY = {0:+.2f}  %'.format(delta_stig[1])}
+                msgs = {'focus': 'Focus series active ' + progress_str + 'delta WD = {0:+.3f} um'.format(
+                    delta_wd * 10 ** 6),
+                        'stig_x': 'Stigmator X series active ' + progress_str + 'delta StigX = {0:+.2f} %'.format(
+                            delta_stig[0]),
+                        'stig_y': 'Stigmator Y series active ' + progress_str + 'delta StigY = {0:+.2f}  %'.format(
+                            delta_stig[1])}
                 utils.log_info('AFSS', msgs[m])
                 self.add_to_main_log('AFSS: ' + msgs[m])
 
