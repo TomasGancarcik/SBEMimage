@@ -454,11 +454,8 @@ class Autofocus:
         return mean_diff, msgs, nr_of_outs
 
     def next_afss_mode(self):
-        if not self.afss_autostig_active:
-            self.afss_mode = 'focus'
-        else:
-            dd = dict(focus='stig_x', stig_x='stig_y', stig_y='focus')
-            self.afss_mode = dd[self.afss_mode]
+        dd = dict(focus='stig_x', stig_x='stig_y', stig_y='focus')
+        self.afss_mode = dd[self.afss_mode] if self.afss_autostig_active else 'focus'
 
     def get_afss_factors(self, tile_keys: dict, shuffle: bool, hyper_shuffle: bool):
         #  get list of WD or Stig perturbations to be used in automated focus/stig series
