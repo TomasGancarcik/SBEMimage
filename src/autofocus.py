@@ -188,7 +188,7 @@ class Autofocus:
                     if diff >= d[m][2]:
                         d1, d2 = round(diff * d[m][3], 3), round(d[m][2] * d[m][3], 3)
                         msg = f'Tile {tile_key}: diff{d[m][4]}: {d1} {d[m][5]}, limit: {d2} {d[m][5]}'
-                        rejected_thr[tile_key] = (d1, msg)
+                        rejected_thr[tile_key] = (d1, msg, self.afss_wd_stig_orig[tile_key])
                 thr_ok &= diff <= d[m][2]
         return nr_of_reliable_fits, rejected_fits, thr_ok, rejected_thr
 

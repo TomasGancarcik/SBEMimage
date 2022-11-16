@@ -20,6 +20,7 @@ import shutil
 import datetime
 import json
 import math
+import copy
 
 from time import sleep, time
 from statistics import mean
@@ -1261,6 +1262,7 @@ class Acquisition:
                 self.autofocus.fit_afss_collections()
                 # Verify that AFSS corrections passed thresholding tests:
                 nr_of_reliable_fits, rej_fits, thresholding_ok, rej_thr = self.autofocus.afss_verify_results()
+                rejected_tiles = copy.deepcopy(rej_thr)
                 if rej_fits:
                     msg = f'Warning: Reliable results could not be found for following tiles:'
                     utils.log_info('AFSS', msg)
@@ -1308,53 +1310,56 @@ class Acquisition:
                         utils.log_info('AFSS', msg)
                         self.add_to_main_log('AFSS: ' + msg)
                         self.add_to_afss_log(msg)
+                        self.autofocus.afss_set_orig_wd_stig()
                     elif not thresholding_ok:
                         if self.autofocus.afss_consensus_mode == 0 or \
                                 (self.autofocus.afss_consensus_mode == 2 and self.autofocus.afss_mode != 'focus'):
-                            msg = f'{d[self.autofocus.afss_mode]} average is out of the permitted range!'
+                            msg = f'{d[self.autofocus.afss_mode]} average correction is out of the permitted range! ' \
+                                  f'Resetting original {d[self.autofocus.afss_mode]} values.'
+                            utils.log_info('AFSS', msg)
+                            self.add_to_main_log('AFSS: ' + msg)
+                            self.add_to_afss_log(msg)
+                            self.autofocus.afss_set_orig_wd_stig()
                         else:
-                            msg = f'{d[self.autofocus.afss_mode]} differences of following tiles ' \
-                                  f'out of permitted range: '
-                        utils.log_info('AFSS', msg)
-                        self.add_to_main_log('AFSS: ' + msg)
-                        self.add_to_afss_log(msg)
-                        for val in rej_thr.values():
-                            utils.log_info('AFSS', val[1])
-                            self.add_to_main_log('AFSS: ' + val[1])
-                            self.add_to_afss_log(val[1])
-                        msg = f'Resetting original {self.autofocus.afss_mode} values.'
-                        utils.log_info('AFSS', msg)
-                        self.add_to_main_log('AFSS: ' + msg)
-                        self.add_to_afss_log(msg)
-
-                    self.autofocus.afss_set_orig_wd_stig()
-                    # Follow up with next afss mode after unsuccessful run
-                    # self.afss_fail_counter[self.autofocus.afss_mode] += 1
+                            mean_diff, log_msgs, nr_of_outliers = self.autofocus.apply_afss_corrections()
+                            print(rejected_tiles)
+                            msg = f'{d[self.autofocus.afss_mode]} corrections of following tiles discarded ' \
+                                  f'(out of permitted range):'
+                            utils.log_info('AFSS', msg)
+                            self.add_to_main_log('AFSS: ' + msg)
+                            self.add_to_afss_log(msg)
+                            # Reset corrections that are out of permitted range and ensure that orig values are reset
+                            for tile_key, val in rej_thr.items():
+                                utils.log_info('AFSS', val[1])
+                                self.add_to_main_log('AFSS: ' + val[1])
+                                self.add_to_afss_log(val[1])
+                                grid_index, tile_index = map(int, str.split(tile_key, '.'))
+                                orig_wd = rejected_tiles[tile_key][2][0][0]
+                                orig_stig_xy = rejected_tiles[tile_key][2][1]
+                                self.gm[grid_index][tile_index].wd = orig_wd
+                                self.autofocus.afss_wd_stig_orig[tile_key][0][0] = orig_wd
+                                self.gm[grid_index][tile_index].stig_xy = orig_stig_xy
+                                self.autofocus.afss_wd_stig_orig[tile_key][1] = orig_stig_xy
+                    self.afss_fail_counter[self.autofocus.afss_mode] += 1
                     self.autofocus.next_afss_mode()
                     # Safety feature in case of AFSS failed too many times (disabled if user selected -1)
                     afss_safe_mode = self.autofocus.afss_max_fails != -1  # Safety feature
                     if any(v == self.autofocus.afss_max_fails for v in self.afss_fail_counter.values()) \
                             and afss_safe_mode:
                         self.autofocus.reset_afss_corrections()
-                        # self.autofocus.next_afss_mode()
-                        # self.autofocus.afss_next_activation += self.autofocus.interval
-                        msg = f'{d[self.autofocus.afss_mode]} run will be triggered at ' \
-                              f'slice {self.autofocus.afss_next_activation + self.autofocus.interval}'
-                        utils.log_info('AFSS', msg)
-                        self.add_to_afss_log(msg)
-                        self.add_to_main_log('AFSS: ' + msg)
                         self.autofocus.afss_active = False
                         self.error_state = Error.autofocus_afss
                         self.pause_acquisition(1)
 
                 self.autofocus.reset_afss_corrections()
-                self.autofocus.afss_next_activation += self.autofocus.interval
-                msg = f'{d[self.autofocus.afss_mode]} run will be triggered ' \
-                      f'at slice {self.autofocus.afss_next_activation}'
-                utils.log_info('AFSS', msg)
-                self.add_to_main_log(f'AFSS: ' + msg)
-                self.add_to_afss_log(msg)
                 self.autofocus.afss_active = False
+                self.autofocus.afss_next_activation += self.autofocus.interval
+                if self.slice_counter+1 != self.number_slices and self.error_state is not Error.autofocus_afss:
+                    msg = f'{d[self.autofocus.afss_mode]} run will be triggered ' \
+                          f'at slice {self.autofocus.afss_next_activation}'
+                    utils.log_info('AFSS', msg)
+                    self.add_to_main_log(f'AFSS: ' + msg)
+                    self.add_to_afss_log(msg)
 
             # --------------- EOF Processing of the Automated Focus/Stigmator series ------------- #
 
