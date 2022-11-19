@@ -1355,9 +1355,15 @@ class Acquisition:
                 self.autofocus.reset_afss_corrections()
                 self.autofocus.afss_active = False
                 self.autofocus.afss_next_activation += self.autofocus.interval
-                if self.slice_counter+1 != self.number_slices and self.error_state is not Error.autofocus_afss:
+                if self.slice_counter + 1 != self.number_slices and self.error_state is not Error.autofocus_afss:
                     msg = f'{d[self.autofocus.afss_mode]} run will be triggered ' \
                           f'at slice {self.autofocus.afss_next_activation}'
+                    utils.log_info('AFSS', msg)
+                    self.add_to_main_log(f'AFSS: ' + msg)
+                    self.add_to_afss_log(msg)
+                if self.autofocus.afss_background_mode:
+                    self.autofocus.afss_set_orig_wd_stig()
+                    msg = 'Background mode active. Resetting original WD/Stig values.'
                     utils.log_info('AFSS', msg)
                     self.add_to_main_log(f'AFSS: ' + msg)
                     self.add_to_afss_log(msg)
@@ -2032,8 +2038,7 @@ class Acquisition:
                 msg = 'AFSS activation postponed to the next slice (some ref.tiles already imaged).'
                 utils.log_info('CTRL', msg)
                 self.add_to_main_log('CTRL: ' + msg)
-            series_active = self.autofocus.afss_next_activation \
-                            <= self.slice_counter \
+            series_active = self.autofocus.afss_next_activation <= self.slice_counter \
                             <= self.autofocus.afss_next_activation + self.autofocus.afss_rounds
 
             self.autofocus.afss_active = self.use_autofocus and self.autofocus.method == 4 and series_active
@@ -2096,7 +2101,8 @@ class Acquisition:
                 utils.log_info('AFSS', msgs[m])
                 self.add_to_main_log('AFSS: ' + msgs[m])
 
-                # Compute ref. tiles' drifts for slices only if we are within series, but omit first slice (reference image)
+                # Compute ref. tiles' drifts for slices only if we are within series, but omit first slice
+                # (reference image)
                 if 0 < self.autofocus.afss_current_round <= self.autofocus.afss_rounds - 1:
                     self.afss_compute_drifts = True
 

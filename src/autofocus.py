@@ -119,6 +119,7 @@ class Autofocus:
         self.afss_avg_corr = None
         self.afss_max_fails = json.loads(self.cfg['autofocus']['afss_max_fails'])
         self.afss_rmse_limit = float(self.cfg['autofocus']['afss_rmse_limit'])
+        self.afss_background_mode = (self.cfg['autofocus']['afss_background_mode'].lower() == 'false')
 
     def save_to_cfg(self):
         """Save current autofocus settings to ConfigParser object. Note that
@@ -148,6 +149,7 @@ class Autofocus:
         self.cfg['autofocus']['afss_mode'] = str(self.afss_mode)
         self.cfg['autofocus']['afss_max_fails'] = str(self.afss_max_fails)
         self.cfg['autofocus']['afss_rmse_limit'] = str(self.afss_rmse_limit)
+        self.cfg['autofocus']['afss_background_mode'] = str(self.afss_background_mode)
 
     # ================ Below: methods for Automated focus/stig series method ==================
 
@@ -404,7 +406,8 @@ class Autofocus:
                         msgs[tile_key] = f'AFSS: Tile {tile_key}, delta WD = {diffs[tile_key] *10**6:.3f} um.'
                     self.gm[g][t].wd = wd_new
                 # Update original values by new results
-                self.afss_wd_stig_orig[tile_key][0][0] = self.gm[g][t].wd
+                if not self.afss_background_mode:
+                    self.afss_wd_stig_orig[tile_key][0][0] = self.gm[g][t].wd
             elif mode == 'stig_x':
                 stig_x_orig, stig_y_orig = self.afss_wd_stig_orig[tile_key][1]
                 if avg_mode == 'Average' or avg_mode == 'focus_specific_stig_average':
@@ -427,7 +430,8 @@ class Autofocus:
                         diffs[tile_key] = stig_x_new - stig_x_orig
                     msgs[tile_key] = f'AFSS: Tile {tile_key}, delta StigX = {diffs[tile_key]:.3f} %.'
                 # Update original values by new results
-                self.afss_wd_stig_orig[tile_key][1] = self.gm[g][t].stig_xy
+                if not self.afss_background_mode:
+                    self.afss_wd_stig_orig[tile_key][1] = self.gm[g][t].stig_xy
             elif mode == 'stig_y':
                 stig_x_orig, stig_y_orig = self.afss_wd_stig_orig[tile_key][1]
                 if avg_mode == 'Average' or avg_mode == 'focus_specific_stig_average':
@@ -450,7 +454,8 @@ class Autofocus:
                         diffs[tile_key] = stig_y_new - stig_y_orig
                     msgs[tile_key] = f'AFSS: Tile {tile_key}, delta StigY = {diffs[tile_key]:.3f} %.'
                 # Update original values by new results
-                self.afss_wd_stig_orig[tile_key][1] = self.gm[g][t].stig_xy
+                if not self.afss_background_mode:
+                    self.afss_wd_stig_orig[tile_key][1] = self.gm[g][t].stig_xy
         return mean_diff, msgs, nr_of_outs
 
     def next_afss_mode(self):

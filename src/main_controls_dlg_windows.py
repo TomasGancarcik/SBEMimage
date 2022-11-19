@@ -3170,6 +3170,7 @@ class AutofocusSettingsDlg(QDialog):
         self.checkBox_afss_autostig_active.setChecked(self.autofocus.afss_autostig_active)
         self.spinBox_afss_fails.setValue(self.autofocus.afss_max_fails)
         self.doubleSpinBox_afss_rmse_limit.setValue(self.autofocus.afss_rmse_limit)
+        self.checkBox_afss_background_mode.setChecked(self.autofocus.afss_background_mode)
 
         # Disable some settings if MagC mode is active
         if magc_mode:
@@ -3284,6 +3285,7 @@ class AutofocusSettingsDlg(QDialog):
         self.autofocus.afss_autostig_active = self.checkBox_afss_autostig_active.isChecked()
         self.autofocus.afss_max_fails = self.spinBox_afss_fails.value()
         self.autofocus.afss_rmse_limit = self.doubleSpinBox_afss_rmse_limit.value()
+        self.autofocus.afss_background_mode = self.checkBox_afss_background_mode.isChecked()
         # Heuristic + Mapfost
         self.autofocus.heuristic_calibration = [
             self.doubleSpinBox_focusCalib.value(),
