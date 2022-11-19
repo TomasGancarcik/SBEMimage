@@ -1314,15 +1314,16 @@ class Acquisition:
                     elif not thresholding_ok:
                         if self.autofocus.afss_consensus_mode == 0 or \
                                 (self.autofocus.afss_consensus_mode == 2 and self.autofocus.afss_mode != 'focus'):
-                            msg = f'{d[self.autofocus.afss_mode]} average correction is out of the permitted range! ' \
-                                  f'Resetting original {d[self.autofocus.afss_mode]} values.'
-                            utils.log_info('AFSS', msg)
-                            self.add_to_main_log('AFSS: ' + msg)
-                            self.add_to_afss_log(msg)
-                            self.autofocus.afss_set_orig_wd_stig()
+                            msg_0 = list(rej_thr.values())[0][1]
+                            msg_1 = f'{d[self.autofocus.afss_mode]} average correction is out of the permitted range!'
+                            msg_2 = f'Resetting original {d[self.autofocus.afss_mode]} values.'
+                            for msg in [msg_0, msg_1, msg_2]:
+                                utils.log_info('AFSS', msg)
+                                self.add_to_main_log('AFSS: ' + msg)
+                                self.add_to_afss_log(msg)
+                                self.autofocus.afss_set_orig_wd_stig()
                         else:
                             mean_diff, log_msgs, nr_of_outliers = self.autofocus.apply_afss_corrections()
-                            print(rejected_tiles)
                             msg = f'{d[self.autofocus.afss_mode]} corrections of following tiles discarded ' \
                                   f'(out of permitted range):'
                             utils.log_info('AFSS', msg)
